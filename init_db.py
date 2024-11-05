@@ -2,6 +2,7 @@ from app import create_app
 from extensions import db
 from models import Question
 import logging
+from sqlalchemy import text
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -68,15 +69,13 @@ def init_questions():
         raise
 
 def clear_and_init_db():
-    # Drop tables in correct order
     try:
-        # Drop tables in reverse dependency order
-        db.session.execute('DROP TABLE IF EXISTS response CASCADE')
-        db.session.execute('DROP TABLE IF EXISTS presentation CASCADE')
-        db.session.execute('DROP TABLE IF EXISTS question CASCADE')
-        db.session.execute('DROP TABLE IF EXISTS "user" CASCADE')
-        # Drop sequences
-        db.session.execute('DROP SEQUENCE IF EXISTS question_id_seq CASCADE')
+        # Drop tables using SQLAlchemy text()
+        db.session.execute(text('DROP TABLE IF EXISTS response CASCADE'))
+        db.session.execute(text('DROP TABLE IF EXISTS presentation CASCADE'))
+        db.session.execute(text('DROP TABLE IF EXISTS question CASCADE'))
+        db.session.execute(text('DROP TABLE IF EXISTS "user" CASCADE'))
+        db.session.execute(text('DROP SEQUENCE IF EXISTS question_id_seq CASCADE'))
         db.session.commit()
         
         # Create fresh tables
