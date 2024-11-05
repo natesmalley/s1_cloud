@@ -89,3 +89,12 @@
     font-size: 0.875rem;
     margin-top: 0.25rem;
 }
+
+.navbar-brand img {
+    filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.2));
+    transition: filter 0.3s ease;
+}
+
+.navbar-brand:hover img {
+    filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.4));
+}

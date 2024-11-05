@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Roadmap Generator{% endblock %}</title>
+    <title>{% block title %}Cloud Security Roadmap Guide{% endblock %}</title>
     <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
     <script src="https://unpkg.com/feather-icons"></script>
@@ -12,8 +12,8 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
             <a class="navbar-brand" href="/">
-                <img src="{{ url_for('static', filename='img/logo.svg') }}" width="30" height="30" class="d-inline-block align-top" alt="">
-                Roadmap Generator
+                <img src="{{ url_for('static', filename='img/logo.png') }}" width="40" height="40" class="d-inline-block align-top" alt="Cloud Security Roadmap Guide">
+                Cloud Security Roadmap Guide
             </a>
             {% if current_user.is_authenticated %}
             <div class="navbar-nav">
