@@ -7,7 +7,7 @@ from flask_login import login_required, login_user, logout_user, current_user
 from oauthlib.oauth2 import WebApplicationClient, OAuth2Error
 from extensions import db
 from models import User
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse, urlunparse
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -17,7 +17,7 @@ GOOGLE_CLIENT_ID = os.environ["GOOGLE_OAUTH_CLIENT_ID"]
 GOOGLE_CLIENT_SECRET = os.environ["GOOGLE_OAUTH_CLIENT_SECRET"]
 GOOGLE_DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configuration"
 
-# Use exact URL from logs
+# Use exact URL as specified
 REDIRECT_URL = 'https://8767fe56-c668-4fa2-9723-292ada26865d-00-2p1xk2p8ugpyl.kirk.replit.dev/google_login/callback'
 
 REQUIRED_SCOPES = [
@@ -27,6 +27,11 @@ REQUIRED_SCOPES = [
     "https://www.googleapis.com/auth/drive.file",
     "https://www.googleapis.com/auth/documents"
 ]
+
+def strip_query_params(url):
+    """Remove query parameters from URL while preserving the path"""
+    parsed = urlparse(url)
+    return urlunparse((parsed.scheme, parsed.netloc, parsed.path, '', '', ''))
 
 def log_request_details():
     """Log detailed request information"""
@@ -83,7 +88,7 @@ def login():
     try:
         logger.info("Initiating Google OAuth login process")
         request_details = log_request_details()
-        logger.debug(f"Using redirect URI: {REDIRECT_URL}")
+        logger.info(f"Using redirect URI: {REDIRECT_URL}")
         logger.debug(f"Requesting scopes: {', '.join(REQUIRED_SCOPES)}")
 
         google_provider_cfg = requests.get(GOOGLE_DISCOVERY_URL).json()
@@ -96,7 +101,7 @@ def login():
         )
         
         logger.info(f"Redirecting to Google authorization endpoint: {authorization_endpoint}")
-        logger.debug(f"Full authorization request URI: {request_uri}")
+        logger.info(f"Full authorization request URI: {request_uri}")
         
         return redirect(request_uri)
 
@@ -124,7 +129,8 @@ def login():
 @google_auth.route("/google_login/callback")
 def callback():
     try:
-        logger.info("Received callback request")
+        logger.info(f"Callback received at: {request.url}")
+        logger.info(f"Using redirect URI: {REDIRECT_URL}")
         request_details = log_request_details()
         
         code = request.args.get("code")
@@ -146,6 +152,10 @@ def callback():
         logger.info("Fetching Google provider configuration")
         google_provider_cfg = requests.get(GOOGLE_DISCOVERY_URL).json()
         token_endpoint = google_provider_cfg["token_endpoint"]
+
+        # Remove query parameters from request.url
+        clean_url = strip_query_params(request.url)
+        logger.info(f"Using cleaned callback URL: {clean_url}")
 
         logger.info("Preparing token request")
         token_url, headers, body = client.prepare_token_request(
