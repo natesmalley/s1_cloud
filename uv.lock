@@ -965,6 +965,7 @@ dependencies = [
     { name = "oauthlib" },
     { name = "psycopg2-binary" },
     { name = "requests" },
+    { name = "sqlalchemy" },
     { name = "streamlit" },
     { name = "streamlit-oauth" },
 ]
@@ -983,6 +984,7 @@ requires-dist = [
     { name = "oauthlib", specifier = ">=3.2.2" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
     { name = "requests" },
+    { name = "sqlalchemy", specifier = ">=2.0.36" },
     { name = "streamlit", specifier = ">=1.39.0" },
     { name = "streamlit-oauth", specifier = ">=0.1.14" },
 ]

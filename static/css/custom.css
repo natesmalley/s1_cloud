@@ -21,6 +21,27 @@
     border-color: var(--s1-purple) !important;
 }
 
+/* Streamlit checkbox styles */
+.st-emotion-cache-1yobcxd.e1f1d6gn0 {
+    color: var(--s1-purple) !important;
+}
+
+/* Streamlit checkbox background when checked */
+.st-emotion-cache-1yobcxd.e1f1d6gn0:checked {
+    background-color: var(--s1-purple) !important;
+    border-color: var(--s1-purple) !important;
+}
+
+/* Checkbox hover state */
+.st-emotion-cache-1yobcxd.e1f1d6gn0:hover {
+    border-color: var(--s1-purple) !important;
+}
+
+/* Update progress bar color */
+.stProgress > div > div {
+    background-color: var(--s1-purple) !important;
+}
+
 /* Custom styles to complement Bootstrap theme */
 .progress {
     height: 0.5rem;
