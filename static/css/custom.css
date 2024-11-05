@@ -34,60 +34,18 @@
     gap: 1rem;
 }
 
-.initiative-option {
-    border: 1px solid var(--bs-gray-700);
-    border-radius: 8px;
-    padding: 1.5rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
+.stCheckbox {
+    margin-right: 1rem;
 }
 
-.initiative-option:hover {
-    border-color: var(--bs-primary);
-    background-color: rgba(var(--bs-primary-rgb), 0.1);
-}
-
-.initiative-option.selected {
-    border-color: var(--bs-primary);
-    background-color: rgba(var(--bs-primary-rgb), 0.1);
-}
-
-.initiative-header {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
+.stMarkdown {
     margin-bottom: 0.5rem;
 }
 
-.initiative-icon {
-    width: 24px;
-    height: 24px;
-    color: var(--bs-primary);
-}
-
-.initiative-title {
-    margin: 0;
-    font-size: 1.1rem;
-    font-weight: 500;
-}
-
-.initiative-description {
-    margin: 0;
-    color: var(--bs-gray-400);
-    font-size: 0.9rem;
-}
-
-.selected-count {
-    margin-top: 1rem;
-    font-size: 0.9rem;
-    color: var(--bs-gray-400);
-}
-
-.invalid-feedback {
-    display: none;
-    color: var(--bs-danger);
-    font-size: 0.875rem;
-    margin-top: 0.25rem;
+/* Style for disabled checkboxes */
+.stCheckbox:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .navbar-brand img {
