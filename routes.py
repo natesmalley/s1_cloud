@@ -4,6 +4,7 @@ from extensions import db
 from models import Question, Response, Presentation, User
 from google_drive import GoogleDriveService
 import re
+import json
 import logging
 
 # Configure logging
@@ -15,12 +16,22 @@ google_drive = GoogleDriveService()
 
 def validate_answer(question, answer):
     """Validate answer based on question type and rules"""
-    if not answer or not str(answer).strip():
+    if not answer:
         return False, "Answer cannot be empty"
         
     if question.question_type == 'multiple_choice':
-        if answer not in question.options:
-            return False, "Invalid option selected"
+        # Handle array of answers for multiple selection
+        answer_list = answer if isinstance(answer, list) else [answer]
+        
+        # Validate that all selected options are valid
+        if not all(opt in question.options for opt in answer_list):
+            return False, "Invalid option(s) selected"
+            
+        # Check exact_count validation rule
+        if question.validation_rules and 'exact_count' in question.validation_rules:
+            required_count = question.validation_rules['exact_count']
+            if len(answer_list) != required_count:
+                return False, f"Please select exactly {required_count} options"
             
     if question.validation_rules:
         rules = question.validation_rules
@@ -118,6 +129,7 @@ def get_saved_answers():
 def submit_answer():
     try:
         data = request.json
+        logger.info(f"Received answer submission: {data}")
         
         if not data or 'question_id' not in data or 'answer' not in data:
             return jsonify({
@@ -134,11 +146,16 @@ def submit_answer():
         
         # Validate answer
         is_valid, validation_message = validate_answer(question, data['answer'])
+        
+        # Log validation results
+        logger.info(f"Validation result for question {question.id}: valid={is_valid}, message={validation_message}")
+        
         if not is_valid and question.required:
             return jsonify({
-                'status': 'error',
+                'status': 'success',
+                'is_valid': False,
                 'message': validation_message
-            }), 400
+            }), 200  # Return 200 for validation failures
         
         # Update or create response
         response = Response.query.filter_by(
@@ -147,14 +164,14 @@ def submit_answer():
         ).first()
         
         if response:
-            response.answer = data['answer']
+            response.answer = json.dumps(data['answer']) if isinstance(data['answer'], list) else data['answer']
             response.is_valid = is_valid
             response.validation_message = validation_message
         else:
             response = Response(
                 user_id=current_user.id,
                 question_id=data['question_id'],
-                answer=data['answer'],
+                answer=json.dumps(data['answer']) if isinstance(data['answer'], list) else data['answer'],
                 is_valid=is_valid,
                 validation_message=validation_message
             )

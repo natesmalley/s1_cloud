@@ -11,46 +11,44 @@ logger = logging.getLogger(__name__)
 def init_questions():
     questions = [
         {
-            'text': 'What industry best describes your organization?',
+            'text': 'Please select your top three struggles with cloud adoption and security (select exactly three):',
             'question_type': 'multiple_choice',
-            'options': ['Technology', 'Healthcare', 'Finance', 'Education', 'Other'],
+            'options': [
+                'Aligning cloud adoption with business objectives',
+                'Achieving measurable business outcomes through cloud strategy',
+                'Evaluating ROI for cloud security initiatives',
+                'Integrating cloud security with IT/business strategies',
+                'Measuring cloud security impact on innovation',
+                'Managing digital transformation initiatives',
+                'Balancing rapid adoption with security compliance',
+                'Communicating risks to leadership effectively',
+                'Ensuring long-term growth and scalability',
+                'Managing strategic partnerships and third-party services'
+            ],
             'required': True,
+            'validation_rules': {'exact_count': 3},
             'order': 1
         },
         {
-            'text': 'Do you have a digital transformation strategy?',
+            'text': 'What is your preferred timeline for addressing these challenges?',
             'question_type': 'multiple_choice',
-            'options': ['Yes', 'No'],
+            'options': ['0-3 months', '3-6 months', '6-12 months', '12+ months'],
             'required': True,
             'order': 2
         },
         {
-            'text': 'Is cybersecurity a priority for your organization?',
+            'text': 'What is your organization's primary industry?',
             'question_type': 'multiple_choice',
-            'options': ['Yes', 'No'],
+            'options': ['Technology', 'Healthcare', 'Finance', 'Education', 'Other'],
             'required': True,
             'order': 3
-        },
-        {
-            'text': 'What is your preferred timeline for implementation?',
-            'question_type': 'multiple_choice',
-            'options': ['0-3 months', '3-6 months', '6-12 months', '12+ months'],
-            'required': True,
-            'order': 4
-        },
-        {
-            'text': 'Which area needs most improvement?',
-            'question_type': 'multiple_choice',
-            'options': ['Infrastructure', 'Security', 'Performance', 'Cost Management', 'User Experience'],
-            'required': True,
-            'order': 5
         },
         {
             'text': 'Additional Comments or Requirements',
             'question_type': 'text',
             'required': False,
             'validation_rules': {},
-            'order': 6
+            'order': 4
         }
     ]
 
@@ -85,7 +83,6 @@ def clear_and_init_db():
         db.session.execute(text('DROP TABLE IF EXISTS presentation CASCADE'))
         db.session.execute(text('DROP TABLE IF EXISTS question CASCADE'))
         db.session.execute(text('DROP TABLE IF EXISTS "user" CASCADE'))
-        db.session.execute(text('DROP SEQUENCE IF EXISTS question_id_seq CASCADE'))
         db.session.commit()
         
         # Create fresh tables
