@@ -24,6 +24,10 @@ class User(UserMixin, db.Model):
     # Setup completion flag
     setup_completed = db.Column(db.Boolean, default=False)
 
+    # Add cascade delete for related records
+    responses = db.relationship('Response', backref='user', cascade='all, delete-orphan')
+    presentations = db.relationship('Presentation', backref='user', cascade='all, delete-orphan')
+
 class Question(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     text = db.Column(db.String(500), nullable=False)
@@ -34,6 +38,9 @@ class Question(db.Model):
     parent_question_id = db.Column(db.Integer, db.ForeignKey('question.id'), nullable=True)
     parent_answer = db.Column(db.String(500), nullable=True)
     order = db.Column(db.Integer, default=0)
+
+    # Add cascade delete for related records
+    responses = db.relationship('Response', backref='question', cascade='all, delete-orphan')
 
 class Response(db.Model):
     id = db.Column(db.Integer, primary_key=True)

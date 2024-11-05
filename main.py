@@ -4,6 +4,11 @@ from googleapiclient.discovery import build
 from models import Question, Response, User, db
 import json
 from app import create_app
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Create Flask app instance
 flask_app = create_app()
@@ -52,19 +57,21 @@ def apply_custom_css():
         .stCheckbox > div[role="checkbox"][aria-checked="true"] {
             background-color: var(--s1-purple) !important;
         }
-        
-        /* Progress bar */
-        .stProgress > div > div > div {
-            background-color: var(--s1-purple);
-        }
-        
-        /* Messages */
-        .stAlert {
-            background-color: rgba(80, 70, 228, 0.1);
-            border-color: var(--s1-purple);
-        }
         </style>
     ''', unsafe_allow_html=True)
+
+def validate_setup_form(recorder_name, recorder_email, customer_company, 
+                       customer_name, customer_title, customer_email):
+    """Validate the setup form inputs"""
+    if not all([recorder_name, recorder_email, customer_company, 
+                customer_name, customer_title, customer_email]):
+        return False, "All fields are required"
+    
+    # Basic email validation
+    if not '@' in recorder_email or not '@' in customer_email:
+        return False, "Please enter valid email addresses"
+        
+    return True, None
 
 def show_setup():
     st.header('Setup Information')
@@ -83,26 +90,34 @@ def show_setup():
         submitted = st.form_submit_button("Save and Continue")
         
         if submitted:
-            if all([recorder_name, recorder_email, customer_company, 
-                   customer_name, customer_title, customer_email]):
+            is_valid, error_message = validate_setup_form(
+                recorder_name, recorder_email, customer_company,
+                customer_name, customer_title, customer_email
+            )
+            
+            if is_valid:
                 with flask_app.app_context():
                     try:
                         user = User.query.get(st.session_state.user_id)
-                        user.recorder_name = recorder_name
-                        user.recorder_email = recorder_email
-                        user.customer_company = customer_company
-                        user.customer_name = customer_name
-                        user.customer_title = customer_title
-                        user.customer_email = customer_email
-                        user.setup_completed = True
-                        db.session.commit()
-                        st.session_state.setup_completed = True
-                        st.success("Setup completed successfully!")
-                        st.experimental_rerun()
+                        if user:
+                            user.recorder_name = recorder_name
+                            user.recorder_email = recorder_email
+                            user.customer_company = customer_company
+                            user.customer_name = customer_name
+                            user.customer_title = customer_title
+                            user.customer_email = customer_email
+                            user.setup_completed = True
+                            db.session.commit()
+                            st.session_state.setup_completed = True
+                            st.success("Setup completed successfully!")
+                            st.rerun()
+                        else:
+                            st.error("User not found. Please try logging in again.")
                     except Exception as e:
+                        logger.error(f"Error saving setup information: {str(e)}")
                         st.error(f"Error saving setup information: {str(e)}")
             else:
-                st.error("Please fill in all required fields")
+                st.error(error_message)
 
 def calculate_progress():
     """Calculate user's progress through the questionnaire"""
@@ -122,19 +137,32 @@ def calculate_progress():
             
             return (answered_questions / total_questions) * 100
         except Exception as e:
-            st.error(f"Error calculating progress: {str(e)}")
+            logger.error(f"Error calculating progress: {str(e)}")
             return 0
 
+def validate_answer(selected_initiatives):
+    """Validate the selected initiatives"""
+    if not selected_initiatives:
+        return False, "Please select at least one option"
+    if len(selected_initiatives) > 3:
+        return False, "Please select no more than 3 options"
+    return True, None
+
 def save_answer(selected_initiatives):
-    """Save the answer to database"""
+    """Save the answer to database with validation"""
     with flask_app.app_context():
         try:
-            # First verify user exists
+            # First validate the answer
+            is_valid, validation_message = validate_answer(selected_initiatives)
+            if not is_valid:
+                return False, validation_message
+
+            # Verify user exists
             user = User.query.get(st.session_state.user_id)
             if not user:
                 return False, "User not found"
 
-            # Now save the response
+            # Save the response
             response = Response.query.filter_by(
                 user_id=st.session_state.user_id,
                 question_id=1
@@ -142,18 +170,27 @@ def save_answer(selected_initiatives):
             
             if response:
                 response.answer = json.dumps(selected_initiatives)
+                response.is_valid = is_valid
+                response.validation_message = validation_message
             else:
                 response = Response(
                     user_id=st.session_state.user_id,
                     question_id=1,
                     answer=json.dumps(selected_initiatives),
-                    is_valid=True
+                    is_valid=is_valid,
+                    validation_message=validation_message
                 )
                 db.session.add(response)
             
             db.session.commit()
+            
+            # Update progress in session
+            progress = calculate_progress()
+            st.session_state.progress = progress
+            
             return True, None
         except Exception as e:
+            logger.error(f"Error saving answer: {str(e)}")
             db.session.rollback()
             return False, f"Failed to save answer: {str(e)}"
 
@@ -220,7 +257,7 @@ def show_questionnaire():
         col1, col2 = st.columns([0.1, 0.9])
         with col1:
             if st.checkbox(
-                label="",  # Empty label since we'll show the title separately
+                label="",
                 value=is_selected,
                 disabled=is_disabled,
                 key=f"cb_{initiative['title']}"
@@ -228,25 +265,32 @@ def show_questionnaire():
                 selected_initiatives.append(initiative['title'])
         with col2:
             st.markdown(f'''
-                <div class="initiative-row">
-                    <span class="initiative-icon">{initiative['icon']}</span>
-                    <div class="tooltip-wrapper">
-                        <strong>{initiative['title']}</strong>
-                        <div class="tooltip-text">{initiative['description']}</div>
+                <div style="padding: 10px; border-radius: 5px; background-color: rgba(80, 70, 228, 0.1);">
+                    <div style="display: flex; align-items: center;">
+                        <span style="font-size: 24px; margin-right: 10px;">{initiative['icon']}</span>
+                        <div>
+                            <strong style="color: white;">{initiative['title']}</strong>
+                            <p style="margin: 5px 0 0 0; color: #aaa; font-size: 0.9em;">
+                                {initiative['description']}
+                            </p>
+                        </div>
                     </div>
                 </div>
             ''', unsafe_allow_html=True)
     
     if selected_initiatives:
-        st.success(f'Selected {len(selected_initiatives)} of 3 maximum options')
+        is_valid, validation_message = validate_answer(selected_initiatives)
+        if is_valid:
+            st.success(f'Selected {len(selected_initiatives)} of 3 maximum options')
+            save_success, save_error = save_answer(selected_initiatives)
+            if not save_success:
+                st.error(save_error)
+        else:
+            st.warning(validation_message)
     else:
         st.warning('Please select at least one option')
     
-    if selected_initiatives:
-        save_success, save_error = save_answer(selected_initiatives)
-        if not save_success:
-            st.error(save_error)
-
+    # Show progress
     progress = calculate_progress()
     st.sidebar.header('Progress')
     st.sidebar.progress(progress / 100)
@@ -260,7 +304,7 @@ def main():
         try:
             st.image('paladin _inPixio.png', width=80)
         except Exception:
-            st.write("S1")  # Fallback text if image fails to load
+            st.write("S1")
     with col2:
         st.title('Cloud Security Roadmap Guide')
     
@@ -268,12 +312,10 @@ def main():
         st.session_state.authenticated = False
         
     if not st.session_state.authenticated:
-        oauth_button = st.button('Sign in with Google')
-        if oauth_button:
-            # Handle OAuth flow
+        if st.button('Sign in with Google'):
             st.session_state.authenticated = True
             st.session_state.user_id = 1  # For testing
-            st.experimental_rerun()
+            st.rerun()
     else:
         # Check if setup is completed
         if 'setup_completed' not in st.session_state:
