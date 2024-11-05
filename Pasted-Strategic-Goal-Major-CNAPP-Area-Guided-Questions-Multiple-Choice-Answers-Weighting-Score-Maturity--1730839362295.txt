@@ -1,0 +1,60 @@
+Strategic Goal,Major CNAPP Area,Guided Questions,Multiple Choice Answers,Weighting Score (Maturity)
+Cloud Adoption and Business Alignment,Unified Visibility,"How well is cloud adoption aligned with your business strategy?","a) Not at all, b) Slightly, c) Moderately, d) Strongly, e) Completely",1-5
+Cloud Adoption and Business Alignment,Unified Visibility,"What level of visibility do you currently have across cloud environments?","a) No visibility, b) Limited, c) Moderate, d) High, e) Complete visibility",1-5
+Cloud Adoption and Business Alignment,Unified Visibility,"How often are cloud resources reviewed for security and compliance?","a) Never, b) Annually, c) Semi-annually, d) Quarterly, e) Continuously",1-5
+Cloud Adoption and Business Alignment,Unified Visibility,"Who in the organization is responsible for ensuring cloud visibility?","a) No one, b) IT team, c) Security team, d) Multiple teams, e) Dedicated team",1-5
+Cloud Adoption and Business Alignment,Unified Visibility,"How confident are you in your cloud security visibility capabilities?","a) Not confident, b) Somewhat confident, c) Neutral, d) Confident, e) Very confident",1-5
+
+Achieving Key Business Outcomes,Offensive Security Engine,"How are you measuring cloud security impact on key business outcomes?","a) Not measuring, b) Basic metrics, c) ROI metrics, d) Business-driven KPIs, e) Fully integrated business impact analysis",1-5
+Achieving Key Business Outcomes,Offensive Security Engine,"Do you have processes in place for offensive security testing of cloud environments?","a) None, b) Ad-hoc, c) Basic, d) Regular, e) Continuous",1-5
+Achieving Key Business Outcomes,Secrets Scanning,"Are there processes in place to detect and remediate cloud secrets exposure?","a) None, b) Ad-hoc, c) Basic processes, d) Regular scanning, e) Automated and continuous monitoring",1-5
+Achieving Key Business Outcomes,Secrets Scanning,"How critical is the identification of exposed secrets to your business objectives?","a) Not critical, b) Slightly critical, c) Moderately critical, d) Highly critical, e) Extremely critical",1-5
+Achieving Key Business Outcomes,Offensive Security Engine,"How effective are your current offensive security measures in the cloud?","a) Not effective, b) Limited, c) Moderately effective, d) Highly effective, e) Fully effective",1-5
+Achieving Key Business Outcomes,Secrets Scanning,"How often do you assess the validity of cloud secrets in your environment?","a) Never, b) Annually, c) Semi-annually, d) Quarterly, e) Continuously",1-5
+
+Maximizing ROI for Cloud Security,AI-Powered Threat Detection and Response,"How are cloud security investments evaluated for return on investment (ROI)?","a) Not evaluated, b) Limited analysis, c) ROI calculated annually, d) ROI linked to key objectives, e) Fully integrated ROI assessment",1-5
+Maximizing ROI for Cloud Security,AI-Powered Threat Detection and Response,"What metrics do you use to assess the efficiency of your cloud security program?","a) None, b) Ad-hoc metrics, c) Basic security metrics, d) Comprehensive security metrics, e) Business-aligned metrics",1-5
+Maximizing ROI for Cloud Security,AI-Powered Threat Detection and Response,"How do you determine the cost-effectiveness of your current cloud security measures?","a) No process, b) Limited analysis, c) Cost vs benefit analysis, d) Business impact analysis, e) Fully integrated cost-effectiveness assessment",1-5
+Maximizing ROI for Cloud Security,AI-Powered Threat Detection and Response,"What level of automation do you use to reduce the cost of cloud security?","a) None, b) Limited, c) Moderate, d) High, e) Fully automated",1-5
+Maximizing ROI for Cloud Security,AI-Powered Threat Detection and Response,"How often is your cloud security efficiency reviewed to ensure alignment with ROI?","a) Never, b) Annually, c) Semi-annually, d) Quarterly, e) Continuously",1-5
+
+Integration of Cloud Security with Business Strategy,Unified Platform and Data Lake,"How integrated is cloud security within your IT and business strategies?","a) Not integrated, b) Limited integration, c) Partially integrated, d) Mostly integrated, e) Fully integrated",1-5
+Integration of Cloud Security with Business Strategy,Unified Platform and Data Lake,"What mechanisms exist to streamline data visibility across security domains?","a) None, b) Manual methods, c) Basic integration, d) Mostly integrated solutions, e) Fully automated and integrated visibility",1-5
+Integration of Cloud Security with Business Strategy,Unified Platform and Data Lake,"How often is cloud security strategy reviewed and updated to align with business goals?","a) Never, b) Annually, c) Semi-annually, d) Quarterly, e) Continuously",1-5
+Integration of Cloud Security with Business Strategy,Unified Platform and Data Lake,"How well are cloud security initiatives funded and resourced within your organization?","a) Not funded, b) Poorly funded, c) Adequately funded, d) Well funded, e) Fully funded",1-5
+Integration of Cloud Security with Business Strategy,Unified Platform and Data Lake,"Is there a dedicated team to ensure integration of cloud security within business initiatives?","a) No, b) Ad-hoc, c) Limited team, d) Well-resourced team, e) Fully dedicated team",1-5
+
+Driving Innovation and Value Delivery,Offensive Security Engine,"How does the security team support innovative cloud projects while managing risks?","a) No support, b) Ad-hoc involvement, c) Basic support, d) Comprehensive support, e) Proactive and integrated support",1-5
+Driving Innovation and Value Delivery,Verified Exploit Paths,"Is proactive risk identification integrated within the application lifecycle?","a) Not integrated, b) Occasionally, c) Basic integration, d) Comprehensive integration, e) Fully proactive and continuous",1-5
+Driving Innovation and Value Delivery,Offensive Security Engine,"How do cloud security capabilities contribute to enabling new business opportunities?","a) Not contributing, b) Slight contribution, c) Moderate contribution, d) High contribution, e) Significant contribution",1-5
+Driving Innovation and Value Delivery,Verified Exploit Paths,"How effective are your current processes for verifying exploit paths in cloud applications?","a) Not effective, b) Limited, c) Moderately effective, d) Highly effective, e) Fully effective",1-5
+Driving Innovation and Value Delivery,Offensive Security Engine,"How well do your security teams work with developers to support secure cloud innovation?","a) No collaboration, b) Limited, c) Moderate, d) Strong, e) Fully integrated",1-5
+
+Supporting Digital Transformation,Agentless and Agent-Based Capabilities,"How are cloud security capabilities supporting your digital transformation initiatives?","a) Not supporting, b) Limited support, c) Moderate support, d) High support, e) Fully supporting transformation",1-5
+Supporting Digital Transformation,Agentless and Agent-Based Capabilities,"What are the security challenges encountered during cloud migration and adoption?","a) High challenges, b) Moderate challenges, c) Few challenges, d) Minor challenges, e) No challenges",1-5
+Supporting Digital Transformation,Agentless and Agent-Based Capabilities,"How well are your cloud security capabilities aligned with your digital transformation goals?","a) Not aligned, b) Slightly aligned, c) Moderately aligned, d) Mostly aligned, e) Fully aligned",1-5
+Supporting Digital Transformation,Agentless and Agent-Based Capabilities,"How does the security team support cloud-first or digital-first initiatives?","a) No support, b) Limited, c) Moderate, d) High, e) Fully integrated",1-5
+Supporting Digital Transformation,Agentless and Agent-Based Capabilities,"How effective is your organization in using agentless capabilities for digital transformation?","a) Not effective, b) Limited, c) Moderate, d) High, e) Fully effective",1-5
+
+Balancing Rapid Adoption with Compliance,Secrets Scanning,"How do you balance rapid cloud adoption with compliance needs?","a) No balance, b) Limited compliance checks, c) Basic compliance, d) Mostly compliant, e) Fully compliant and balanced",1-5
+Balancing Rapid Adoption with Compliance,Cloud Workload Security,"How effective are your current controls for protecting cloud workloads?","a) Not effective, b) Partially effective, c) Moderately effective, d) Highly effective, e) Fully effective",1-5
+Balancing Rapid Adoption with Compliance,Secrets Scanning,"How often are compliance requirements reviewed in light of rapid cloud changes?","a) Never, b) Annually, c) Semi-annually, d) Quarterly, e) Continuously",1-5
+Balancing Rapid Adoption with Compliance,Cloud Workload Security,"How proactive is your organization in identifying compliance gaps during cloud adoption?","a) Not proactive, b) Occasionally, c) Sometimes, d) Often, e) Always",1-5
+Balancing Rapid Adoption with Compliance,Cloud Workload Security,"How effective are your current processes in remediating compliance issues quickly?","a) Not effective, b) Limited, c) Moderate, d) High, e) Fully effective",1-5
+Balancing Rapid Adoption with Compliance,Secrets Scanning,"How well is compliance automation integrated into your cloud security strategy?","a) Not integrated, b) Limited, c) Moderate, d) Highly integrated, e) Fully automated",1-5
+
+**Revised Strategic Goals**
+
+1. **Cloud Adoption and Business Alignment**: Ensure cloud adoption is in line with the organization's overarching business objectives, providing a secure and compliant foundation for business activities.
+
+2. **Achieving Key Business Outcomes**: Drive security practices that directly support business outcomes, ensuring risk mitigation efforts contribute positively to overall business performance.
+
+3. **Maximizing ROI for Cloud Security**: Evaluate cloud security investments to maximize return on investment, ensuring that security measures are both effective and financially sustainable.
+
+4. **Integration of Cloud Security with Business Strategy**: Integrate cloud security practices within the broader IT and business strategies to ensure cohesive growth, operational efficiency, and security posture.
+
+5. **Driving Innovation and Value Delivery**: Facilitate secure innovation by embedding proactive risk management into cloud projects, enabling business opportunities while minimizing risk.
+
+6. **Supporting Digital Transformation**: Leverage cloud security to support digital transformation initiatives, ensuring that new technologies and processes are securely adopted.
+
+7. **Balancing Rapid Adoption with Compliance**: Achieve a balance between rapidly adopting cloud technologies and maintaining compliance, ensuring security does not hinder business agility.

@@ -10,6 +10,19 @@ class User(UserMixin, db.Model):
     google_drive_folder = db.Column(db.String(256))
     last_question_id = db.Column(db.Integer, db.ForeignKey('question.id'), nullable=True)
     progress_percentage = db.Column(db.Float, default=0.0)
+    
+    # Recorder Information
+    recorder_name = db.Column(db.String(100))
+    recorder_email = db.Column(db.String(120))
+    
+    # Customer Information
+    customer_company = db.Column(db.String(100))
+    customer_name = db.Column(db.String(100))
+    customer_title = db.Column(db.String(100))
+    customer_email = db.Column(db.String(120))
+    
+    # Setup completion flag
+    setup_completed = db.Column(db.Boolean, default=False)
 
 class Question(db.Model):
     id = db.Column(db.Integer, primary_key=True)

@@ -6,14 +6,44 @@
         <div class="col-md-8">
             <div class="card">
                 <div class="card-body">
-                    <h2 class="card-title mb-4">Welcome, {{ current_user.username }}!</h2>
-                    <p class="lead">You're all set to start generating your roadmap.</p>
-                    
-                    <div class="d-grid gap-3">
-                        <a href="{{ url_for('routes.questionnaire') }}" class="btn btn-primary btn-lg">
-                            Start Questionnaire
-                        </a>
-                    </div>
+                    <h2 class="card-title mb-4">Setup Information</h2>
+                    <form method="POST" action="{{ url_for('routes.save_setup') }}">
+                        <div class="mb-4">
+                            <h4>Recorder Information</h4>
+                            <div class="mb-3">
+                                <label for="recorder_name" class="form-label">Name *</label>
+                                <input type="text" class="form-control" id="recorder_name" name="recorder_name" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="recorder_email" class="form-label">Email *</label>
+                                <input type="email" class="form-control" id="recorder_email" name="recorder_email" required>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <h4>Customer Information</h4>
+                            <div class="mb-3">
+                                <label for="customer_company" class="form-label">Company *</label>
+                                <input type="text" class="form-control" id="customer_company" name="customer_company" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="customer_name" class="form-label">Name *</label>
+                                <input type="text" class="form-control" id="customer_name" name="customer_name" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="customer_title" class="form-label">Title *</label>
+                                <input type="text" class="form-control" id="customer_title" name="customer_title" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="customer_email" class="form-label">Email *</label>
+                                <input type="email" class="form-control" id="customer_email" name="customer_email" required>
+                            </div>
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary">Save and Continue</button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>

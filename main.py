@@ -66,20 +66,43 @@ def apply_custom_css():
         </style>
     ''', unsafe_allow_html=True)
 
-st.set_page_config(
-    page_title="Cloud Security Roadmap Guide",
-    page_icon=None,
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-def validate_answer(selected_initiatives):
-    """Validate the selected initiatives"""
-    if not selected_initiatives:
-        return False, "Please select at least one option"
-    if len(selected_initiatives) > 3:
-        return False, "Please select no more than 3 options"
-    return True, None
+def show_setup():
+    st.header('Setup Information')
+    
+    with st.form("setup_form"):
+        st.subheader("Recorder Information")
+        recorder_name = st.text_input("Name *", key="recorder_name")
+        recorder_email = st.text_input("Email *", key="recorder_email")
+        
+        st.subheader("Customer Information")
+        customer_company = st.text_input("Company *", key="customer_company")
+        customer_name = st.text_input("Name *", key="customer_name")
+        customer_title = st.text_input("Title *", key="customer_title")
+        customer_email = st.text_input("Email *", key="customer_email")
+        
+        submitted = st.form_submit_button("Save and Continue")
+        
+        if submitted:
+            if all([recorder_name, recorder_email, customer_company, 
+                   customer_name, customer_title, customer_email]):
+                with flask_app.app_context():
+                    try:
+                        user = User.query.get(st.session_state.user_id)
+                        user.recorder_name = recorder_name
+                        user.recorder_email = recorder_email
+                        user.customer_company = customer_company
+                        user.customer_name = customer_name
+                        user.customer_title = customer_title
+                        user.customer_email = customer_email
+                        user.setup_completed = True
+                        db.session.commit()
+                        st.session_state.setup_completed = True
+                        st.success("Setup completed successfully!")
+                        st.experimental_rerun()
+                    except Exception as e:
+                        st.error(f"Error saving setup information: {str(e)}")
+            else:
+                st.error("Please fill in all required fields")
 
 def calculate_progress():
     """Calculate user's progress through the questionnaire"""
@@ -136,7 +159,6 @@ def save_answer(selected_initiatives):
 
 def show_questionnaire():
     st.header('Strategic Assessment Questionnaire')
-    st.markdown('---')
     
     st.write('### Please select your top Business Initiatives in Cloud Security (select 1-3)')
     
@@ -178,48 +200,6 @@ def show_questionnaire():
         }
     ]
     
-    # Add CSS for tooltips
-    st.markdown('''
-        <style>
-        .tooltip-wrapper {
-            position: relative;
-            display: inline-block;
-        }
-        .tooltip-wrapper:hover .tooltip-text {
-            visibility: visible;
-            opacity: 1;
-        }
-        .tooltip-text {
-            visibility: hidden;
-            opacity: 0;
-            background-color: var(--s1-dark-blue);
-            color: white;
-            text-align: left;
-            padding: 8px;
-            border-radius: 4px;
-            border: 1px solid var(--s1-purple);
-            position: absolute;
-            z-index: 1;
-            width: 300px;
-            transition: opacity 0.3s;
-        }
-        .initiative-row {
-            display: flex;
-            align-items: center;
-            margin-bottom: 1rem;
-            padding: 0.5rem;
-            border-radius: 4px;
-        }
-        .initiative-row:hover {
-            background-color: rgba(80, 70, 228, 0.1);
-        }
-        .initiative-icon {
-            margin-right: 0.5rem;
-            font-size: 1.2rem;
-        }
-        </style>
-    ''', unsafe_allow_html=True)
-
     selected_initiatives = []
     
     # Get previously selected initiatives from the database
@@ -275,12 +255,11 @@ def show_questionnaire():
 def main():
     apply_custom_css()
     
-    # Update logo handling
     col1, col2 = st.columns([0.1, 0.9])
     with col1:
         try:
             st.image('paladin _inPixio.png', width=80)
-        except Exception as e:
+        except Exception:
             st.write("S1")  # Fallback text if image fails to load
     with col2:
         st.title('Cloud Security Roadmap Guide')
@@ -293,9 +272,19 @@ def main():
         if oauth_button:
             # Handle OAuth flow
             st.session_state.authenticated = True
-            st.session_state.user_id = 1  # For testing, we'll use a fixed user ID
+            st.session_state.user_id = 1  # For testing
+            st.experimental_rerun()
     else:
-        show_questionnaire()
+        # Check if setup is completed
+        if 'setup_completed' not in st.session_state:
+            with flask_app.app_context():
+                user = User.query.get(st.session_state.user_id)
+                st.session_state.setup_completed = user.setup_completed if user else False
+        
+        if not st.session_state.setup_completed:
+            show_setup()
+        else:
+            show_questionnaire()
 
 if __name__ == '__main__':
     # Set Streamlit to run on port 5000
