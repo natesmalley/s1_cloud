@@ -63,12 +63,17 @@ def apply_custom_css():
             background-color: rgba(80, 70, 228, 0.1);
             border-color: var(--s1-purple);
         }
+
+        /* Description text */
+        small {
+            color: var(--bs-gray-400);
+        }
         </style>
     ''', unsafe_allow_html=True)
 
 st.set_page_config(
     page_title="Cloud Security Roadmap Guide",
-    page_icon=None,  # We'll handle the icon in the main layout
+    page_icon=None,
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -141,43 +146,70 @@ def show_questionnaire():
     st.write('### Please select your top Business Initiatives in Cloud Security (select 1-3)')
     
     initiatives = [
-        'Cloud Adoption and Business Alignment',
-        'Achieving Key Business Outcomes',
-        'Maximizing ROI for Cloud Security',
-        'Integration of Cloud Security with Business Strategy',
-        'Driving Innovation and Value Delivery',
-        'Supporting Digital Transformation',
-        'Balancing Rapid Adoption with Compliance'
+        {
+            'title': 'Cloud Adoption and Business Alignment',
+            'description': 'Ensure cloud adoption supports overall business objectives by leveraging SentinelOne\'s Unified Visibility and Secrets Scanning.'
+        },
+        {
+            'title': 'Achieving Key Business Outcomes',
+            'description': 'Use SentinelOne\'s Offensive Security Engine to drive business outcomes by proactively identifying and mitigating risks.'
+        },
+        {
+            'title': 'Maximizing ROI for Cloud Security',
+            'description': 'Optimize return on investment with SentinelOne\'s AI-Powered Threat Detection and Response.'
+        },
+        {
+            'title': 'Integration of Cloud Security with Business Strategy',
+            'description': 'Align cloud security goals with broader IT and business strategies using SentinelOne\'s Unified Platform.'
+        },
+        {
+            'title': 'Driving Innovation and Value Delivery',
+            'description': 'Leverage SentinelOne\'s Offensive Security Engine to enable innovation while reducing vulnerabilities.'
+        },
+        {
+            'title': 'Supporting Digital Transformation',
+            'description': 'Enhance digital transformation initiatives using SentinelOne\'s Agentless and Agent-Based Capabilities.'
+        },
+        {
+            'title': 'Balancing Rapid Adoption with Compliance',
+            'description': 'Maintain security compliance using SentinelOne\'s Secrets Scanning and Cloud Workload Security.'
+        }
     ]
     
     selected_initiatives = []
+    
+    # Get previously selected initiatives from the database
+    with flask_app.app_context():
+        try:
+            response = Response.query.filter_by(
+                user_id=st.session_state.user_id,
+                question_id=1
+            ).first()
+            saved_initiatives = json.loads(response.answer) if response else []
+        except Exception:
+            saved_initiatives = []
+
     for initiative in initiatives:
+        is_selected = initiative['title'] in saved_initiatives
+        is_disabled = len(selected_initiatives) >= 3 and not is_selected
+        
         col1, col2 = st.columns([0.1, 0.9])
         with col1:
-            # Get previously selected initiatives from the database
-            with flask_app.app_context():
-                try:
-                    response = Response.query.filter_by(
-                        user_id=st.session_state.user_id,
-                        question_id=1
-                    ).first()
-                    saved_initiatives = json.loads(response.answer) if response else []
-                except Exception:
-                    saved_initiatives = []
-            
-            is_selected = initiative in saved_initiatives
-            is_disabled = len(selected_initiatives) >= 3 and not is_selected
-            if st.checkbox('', value=is_selected, disabled=is_disabled, key=f'cb_{initiative}', label=initiative):
-                selected_initiatives.append(initiative)
+            # Fix: Remove the empty string and use only the label parameter
+            if st.checkbox(label=initiative['title'], 
+                         value=is_selected,
+                         disabled=is_disabled,
+                         key=f"cb_{initiative['title']}"):
+                selected_initiatives.append(initiative['title'])
         with col2:
-            st.markdown(f'**{initiative}**')
+            st.markdown(f"**{initiative['title']}**")
+            st.markdown(f"<small>{initiative['description']}</small>", unsafe_allow_html=True)
     
     # Add a container for the selection count
-    selection_container = st.empty()
     if len(selected_initiatives) > 0:
-        selection_container.success(f'Selected {len(selected_initiatives)} of 3 maximum options')
+        st.success(f'Selected {len(selected_initiatives)} of 3 maximum options')
     else:
-        selection_container.warning('Please select at least one option')
+        st.warning('Please select at least one option')
     
     # Save answers when changes occur
     if selected_initiatives:
