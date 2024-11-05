@@ -3,6 +3,7 @@ class Questionnaire {
         this.questions = [];
         this.currentIndex = 0;
         this.answers = new Map();
+        this.validationErrors = new Map();
         this.initialize();
     }
 
@@ -27,6 +28,7 @@ class Questionnaire {
             this.updateProgress();
         } catch (error) {
             console.error('Error loading questionnaire:', error);
+            this.showError('Failed to load questionnaire. Please refresh the page.');
         }
     }
 
@@ -37,10 +39,13 @@ class Questionnaire {
         container.innerHTML = `
             <div class="card mb-4">
                 <div class="card-body">
-                    <h5 class="card-title">${question.text} <span class="text-danger">*</span></h5>
+                    <h5 class="card-title">
+                        ${question.text}
+                        ${question.required ? '<span class="text-danger">*</span>' : ''}
+                    </h5>
                     ${this.renderQuestionInput(question)}
                     <div class="invalid-feedback" id="validation-message">
-                        This field is required
+                        ${this.validationErrors.get(question.id) || 'This field is required'}
                     </div>
                 </div>
             </div>
@@ -60,19 +65,22 @@ class Questionnaire {
 
     renderQuestionInput(question) {
         const savedAnswer = this.answers.get(question.id);
+        const isInvalid = this.validationErrors.has(question.id);
         
         switch (question.type) {
             case 'multiple_choice':
                 return question.options.map(option => `
                     <div class="form-check">
-                        <input class="form-check-input" type="radio" name="answer" value="${option}"
+                        <input class="form-check-input ${isInvalid ? 'is-invalid' : ''}"
+                            type="radio" name="answer" value="${option}"
                             ${savedAnswer === option ? 'checked' : ''}>
                         <label class="form-check-label">${option}</label>
                     </div>
                 `).join('');
             case 'text':
                 return `
-                    <textarea class="form-control" rows="3">${savedAnswer || ''}</textarea>
+                    <textarea class="form-control ${isInvalid ? 'is-invalid' : ''}"
+                        rows="3">${savedAnswer || ''}</textarea>
                 `;
             default:
                 return '<p class="text-danger">Unsupported question type</p>';
@@ -99,30 +107,13 @@ class Questionnaire {
         document.getElementById('submit-btn').onclick = () => this.submitQuestionnaire();
     }
 
-    validateCurrentAnswer() {
-        const answer = this.getAnswer();
-        const isValid = answer && answer.trim() !== '';
-        
-        const container = document.getElementById('questions-container');
-        const input = container.querySelector('textarea, input:checked');
-        const feedback = container.querySelector('.invalid-feedback');
-        
-        if (input) {
-            input.classList.toggle('is-invalid', !isValid);
-        }
-        if (feedback) {
-            feedback.style.display = isValid ? 'none' : 'block';
-        }
-        
-        return isValid;
-    }
-
-    async saveAnswer() {
+    async validateCurrentAnswer() {
         const question = this.questions[this.currentIndex];
         const answer = this.getAnswer();
         
-        if (!this.validateCurrentAnswer()) {
-            return false;
+        if (!answer && !question.required) {
+            this.validationErrors.delete(question.id);
+            return true;
         }
 
         try {
@@ -135,16 +126,41 @@ class Questionnaire {
                 })
             });
             
-            if (!response.ok) {
-                throw new Error('Failed to save answer');
+            const result = await response.json();
+            
+            if (result.status === 'success') {
+                if (result.is_valid) {
+                    this.validationErrors.delete(question.id);
+                    this.answers.set(question.id, answer);
+                    this.updateProgress(result.progress);
+                    return true;
+                } else {
+                    this.validationErrors.set(question.id, result.message);
+                }
+            } else {
+                this.validationErrors.set(question.id, result.message);
             }
             
-            this.answers.set(question.id, answer);
-            return true;
-        } catch (error) {
-            console.error('Error saving answer:', error);
-            alert('Failed to save your answer. Please try again.');
+            this.showValidationError(question.id);
             return false;
+        } catch (error) {
+            console.error('Error validating answer:', error);
+            this.showError('Failed to validate answer. Please try again.');
+            return false;
+        }
+    }
+
+    showValidationError(questionId) {
+        const container = document.getElementById('questions-container');
+        const input = container.querySelector('textarea, input:checked');
+        const feedback = container.querySelector('.invalid-feedback');
+        
+        if (input) {
+            input.classList.add('is-invalid');
+        }
+        if (feedback) {
+            feedback.textContent = this.validationErrors.get(questionId);
+            feedback.style.display = 'block';
         }
     }
 
@@ -164,29 +180,58 @@ class Questionnaire {
             this.currentIndex--;
             this.renderQuestion();
             this.showControls();
-            this.updateProgress();
         }
     }
 
     async nextQuestion() {
-        if (await this.saveAnswer()) {
+        if (await this.validateCurrentAnswer()) {
             this.currentIndex++;
             this.renderQuestion();
             this.showControls();
-            this.updateProgress();
         }
     }
 
-    updateProgress() {
+    updateProgress(progress) {
         const progressBar = document.querySelector('.progress-bar');
-        const progress = ((this.currentIndex + 1) / this.questions.length) * 100;
-        progressBar.style.width = `${progress}%`;
-        progressBar.setAttribute('aria-valuenow', progress);
+        if (progress === undefined) {
+            // Fetch progress from server
+            fetch('/api/progress')
+                .then(response => response.json())
+                .then(data => {
+                    progressBar.style.width = `${data.progress}%`;
+                    progressBar.setAttribute('aria-valuenow', data.progress);
+                });
+        } else {
+            progressBar.style.width = `${progress}%`;
+            progressBar.setAttribute('aria-valuenow', progress);
+        }
+    }
+
+    showError(message) {
+        const container = document.getElementById('questionnaire-container');
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'alert alert-danger alert-dismissible fade show';
+        errorDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        container.insertBefore(errorDiv, container.firstChild);
     }
 
     async submitQuestionnaire() {
-        if (await this.saveAnswer()) {
+        if (await this.validateCurrentAnswer()) {
             try {
+                const validateResponse = await fetch('/api/validate-answers');
+                const validation = await validateResponse.json();
+                
+                if (!validation.is_valid) {
+                    const messages = validation.invalid_questions
+                        .map(q => `Question ${q.question_id}: ${q.message}`)
+                        .join('\n');
+                    this.showError('Please correct the following errors:\n' + messages);
+                    return;
+                }
+                
                 const response = await fetch('/api/generate-roadmap', {
                     method: 'POST'
                 });
@@ -195,11 +240,11 @@ class Questionnaire {
                 if (result.status === 'success') {
                     window.location.href = `https://docs.google.com/document/d/${result.doc_id}`;
                 } else {
-                    alert('Failed to generate roadmap. Please try again.');
+                    this.showError(result.message || 'Failed to generate roadmap. Please try again.');
                 }
             } catch (error) {
-                console.error('Error generating roadmap:', error);
-                alert('An error occurred while generating the roadmap.');
+                console.error('Error submitting questionnaire:', error);
+                this.showError('An error occurred while generating the roadmap.');
             }
         }
     }

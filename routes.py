@@ -2,10 +2,54 @@ from flask import render_template, jsonify, request, redirect, url_for
 from flask_login import login_required, current_user
 from app import app
 from extensions import db
-from models import Question, Response, Presentation
+from models import Question, Response, Presentation, User
 from google_drive import GoogleDriveService
+import re
 
 google_drive = GoogleDriveService()
+
+def validate_answer(question, answer):
+    """Validate answer based on question type and rules"""
+    if not answer or not str(answer).strip():
+        return False, "Answer cannot be empty"
+        
+    if question.question_type == 'multiple_choice':
+        if answer not in question.options:
+            return False, "Invalid option selected"
+            
+    if question.validation_rules:
+        rules = question.validation_rules
+        if rules.get('min_length') and len(str(answer)) < rules['min_length']:
+            return False, f"Answer must be at least {rules['min_length']} characters long"
+            
+        if rules.get('max_length') and len(str(answer)) > rules['max_length']:
+            return False, f"Answer must not exceed {rules['max_length']} characters"
+            
+        if rules.get('pattern'):
+            if not re.match(rules['pattern'], str(answer)):
+                return False, "Answer format is invalid"
+                
+    return True, None
+
+def calculate_progress(user_id):
+    """Calculate user's progress through the questionnaire"""
+    total_questions = Question.query.count()
+    answered_questions = Response.query.filter_by(
+        user_id=user_id,
+        is_valid=True
+    ).count()
+    
+    if total_questions == 0:
+        return 0
+        
+    progress = (answered_questions / total_questions) * 100
+    
+    # Update user's progress
+    user = User.query.get(user_id)
+    user.progress_percentage = progress
+    db.session.commit()
+    
+    return progress
 
 @app.route('/')
 def index():
@@ -26,31 +70,23 @@ def questionnaire():
 @app.route('/api/questions', methods=['GET'])
 @login_required
 def get_questions():
-    question_id = request.args.get('after_question', type=int)
-    if question_id:
-        previous_answer = Response.query.filter_by(
-            user_id=current_user.id,
-            question_id=question_id
-        ).first()
-        
-        questions = Question.query.filter_by(
-            parent_question_id=question_id,
-            parent_answer=previous_answer.answer if previous_answer else None
-        ).all()
-    else:
-        questions = Question.query.filter_by(parent_question_id=None).limit(7).all()
-    
+    questions = Question.query.order_by(Question.order).all()
     return jsonify([{
         'id': q.id,
         'text': q.text,
         'type': q.question_type,
-        'options': q.options
+        'options': q.options,
+        'required': q.required,
+        'validation_rules': q.validation_rules
     } for q in questions])
 
 @app.route('/api/saved-answers', methods=['GET'])
 @login_required
 def get_saved_answers():
-    responses = Response.query.filter_by(user_id=current_user.id).all()
+    responses = Response.query.filter_by(
+        user_id=current_user.id,
+        is_valid=True
+    ).all()
     return jsonify([{
         'question_id': r.question_id,
         'answer': r.answer
@@ -61,20 +97,28 @@ def get_saved_answers():
 def submit_answer():
     data = request.json
     
-    # Validate required fields
     if not data or 'question_id' not in data or 'answer' not in data:
-        return jsonify({'status': 'error', 'message': 'Missing required fields'}), 400
+        return jsonify({
+            'status': 'error',
+            'message': 'Missing required fields'
+        }), 400
     
-    # Validate answer is not empty
-    if not data['answer'] or not str(data['answer']).strip():
-        return jsonify({'status': 'error', 'message': 'Answer cannot be empty'}), 400
-    
-    # Check if question exists
     question = Question.query.get(data['question_id'])
     if not question:
-        return jsonify({'status': 'error', 'message': 'Question not found'}), 404
+        return jsonify({
+            'status': 'error',
+            'message': 'Question not found'
+        }), 404
     
-    # Update existing response or create new one
+    # Validate answer
+    is_valid, validation_message = validate_answer(question, data['answer'])
+    if not is_valid and question.required:
+        return jsonify({
+            'status': 'error',
+            'message': validation_message
+        }), 400
+    
+    # Update or create response
     response = Response.query.filter_by(
         user_id=current_user.id,
         question_id=data['question_id']
@@ -82,35 +126,89 @@ def submit_answer():
     
     if response:
         response.answer = data['answer']
+        response.is_valid = is_valid
+        response.validation_message = validation_message
     else:
         response = Response(
             user_id=current_user.id,
             question_id=data['question_id'],
-            answer=data['answer']
+            answer=data['answer'],
+            is_valid=is_valid,
+            validation_message=validation_message
         )
         db.session.add(response)
     
     try:
         db.session.commit()
-        return jsonify({'status': 'success'})
+        
+        # Update progress
+        progress = calculate_progress(current_user.id)
+        
+        return jsonify({
+            'status': 'success',
+            'progress': progress,
+            'is_valid': is_valid,
+            'message': validation_message
+        })
     except Exception as e:
         db.session.rollback()
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
+
+@app.route('/api/progress', methods=['GET'])
+@login_required
+def get_progress():
+    progress = calculate_progress(current_user.id)
+    return jsonify({
+        'progress': progress
+    })
+
+@app.route('/api/validate-answers', methods=['GET'])
+@login_required
+def validate_all_answers():
+    questions = Question.query.all()
+    responses = Response.query.filter_by(user_id=current_user.id).all()
+    answered_questions = {r.question_id: r for r in responses}
+    
+    invalid_questions = []
+    for question in questions:
+        if question.required and question.id not in answered_questions:
+            invalid_questions.append({
+                'question_id': question.id,
+                'message': 'This question requires an answer'
+            })
+        elif question.id in answered_questions:
+            response = answered_questions[question.id]
+            is_valid, message = validate_answer(question, response.answer)
+            if not is_valid and question.required:
+                invalid_questions.append({
+                    'question_id': question.id,
+                    'message': message
+                })
+    
+    return jsonify({
+        'is_valid': len(invalid_questions) == 0,
+        'invalid_questions': invalid_questions
+    })
 
 @app.route('/api/generate-roadmap', methods=['POST'])
 @login_required
 def generate_roadmap():
-    # Verify all questions are answered
-    questions = Question.query.all()
-    responses = Response.query.filter_by(user_id=current_user.id).all()
-    answered_questions = {r.question_id for r in responses}
-    
-    missing_questions = [q.id for q in questions if q.id not in answered_questions]
-    if missing_questions:
+    # Verify all required questions are answered and valid
+    validation_result = validate_all_answers()
+    if not validation_result.json['is_valid']:
         return jsonify({
             'status': 'error',
-            'message': 'Please answer all questions before generating the roadmap'
+            'message': 'Please answer all required questions correctly before generating the roadmap',
+            'invalid_questions': validation_result.json['invalid_questions']
         }), 400
+    
+    responses = Response.query.filter_by(
+        user_id=current_user.id,
+        is_valid=True
+    ).all()
     
     content = generate_roadmap_content(responses)
     
@@ -129,7 +227,10 @@ def generate_roadmap():
         db.session.commit()
         return jsonify({'status': 'success', 'doc_id': doc_id})
     
-    return jsonify({'status': 'error', 'message': 'Failed to create presentation'})
+    return jsonify({
+        'status': 'error',
+        'message': 'Failed to create presentation'
+    })
 
 def generate_roadmap_content(responses):
     content = "# Strategic Roadmap\n\n"
