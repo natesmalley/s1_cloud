@@ -8,6 +8,7 @@ from google_drive import GoogleDriveService
 def create_app():
     app = Flask(__name__)
     app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-key-for-testing')
+    app.debug = True  # Enable debug mode
 
     # Database configuration
     app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
