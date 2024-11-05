@@ -9,14 +9,25 @@ class Questionnaire {
 
     async initialize() {
         try {
-            // Load questions and saved answers
             const [questionsResponse, answersResponse] = await Promise.all([
                 fetch('/api/questions'),
                 fetch('/api/saved-answers')
             ]);
             
+            if (!questionsResponse.ok || !answersResponse.ok) {
+                throw new Error('Failed to fetch questionnaire data');
+            }
+            
             this.questions = await questionsResponse.json();
             const savedAnswers = await answersResponse.json();
+            
+            if (!Array.isArray(this.questions)) {
+                throw new Error('Invalid questions data received');
+            }
+
+            if (this.questions.error) {
+                throw new Error(this.questions.error);
+            }
             
             // Initialize answers map with saved answers
             savedAnswers.forEach(answer => {
@@ -36,6 +47,11 @@ class Questionnaire {
         const container = document.getElementById('questions-container');
         const question = this.questions[this.currentIndex];
         
+        if (!question) {
+            this.showError('Failed to load question. Please refresh the page.');
+            return;
+        }
+
         container.innerHTML = `
             <div class="card mb-4">
                 <div class="card-body">
@@ -54,11 +70,11 @@ class Questionnaire {
         // Add event listeners for real-time validation
         if (question.type === 'text') {
             const textarea = container.querySelector('textarea');
-            textarea.addEventListener('input', () => this.validateCurrentAnswer());
+            textarea?.addEventListener('input', () => this.validateCurrentAnswer());
         } else {
             const inputs = container.querySelectorAll('input[type="radio"]');
             inputs.forEach(input => {
-                input.addEventListener('change', () => this.validateCurrentAnswer());
+                input?.addEventListener('change', () => this.validateCurrentAnswer());
             });
         }
     }
@@ -93,6 +109,11 @@ class Questionnaire {
         const nextBtn = document.getElementById('next-btn');
         const submitBtn = document.getElementById('submit-btn');
 
+        if (!controls || !prevBtn || !nextBtn || !submitBtn) {
+            console.error('Navigation controls not found');
+            return;
+        }
+
         controls.classList.remove('d-none');
         prevBtn.disabled = this.currentIndex === 0;
         nextBtn.classList.toggle('d-none', this.currentIndex === this.questions.length - 1);
@@ -102,9 +123,13 @@ class Questionnaire {
     }
 
     setupEventListeners() {
-        document.getElementById('prev-btn').onclick = () => this.previousQuestion();
-        document.getElementById('next-btn').onclick = () => this.nextQuestion();
-        document.getElementById('submit-btn').onclick = () => this.submitQuestionnaire();
+        const prevBtn = document.getElementById('prev-btn');
+        const nextBtn = document.getElementById('next-btn');
+        const submitBtn = document.getElementById('submit-btn');
+
+        if (prevBtn) prevBtn.onclick = () => this.previousQuestion();
+        if (nextBtn) nextBtn.onclick = () => this.nextQuestion();
+        if (submitBtn) submitBtn.onclick = () => this.submitQuestionnaire();
     }
 
     async validateCurrentAnswer() {
@@ -171,7 +196,7 @@ class Questionnaire {
             return selected ? selected.value : null;
         } else {
             const textarea = document.querySelector('textarea');
-            return textarea.value.trim();
+            return textarea ? textarea.value.trim() : '';
         }
     }
 
@@ -193,13 +218,25 @@ class Questionnaire {
 
     updateProgress(progress) {
         const progressBar = document.querySelector('.progress-bar');
+        if (!progressBar) {
+            console.error('Progress bar not found');
+            return;
+        }
+
         if (progress === undefined) {
             // Fetch progress from server
             fetch('/api/progress')
                 .then(response => response.json())
                 .then(data => {
+                    if (data.error) {
+                        console.error('Error fetching progress:', data.error);
+                        return;
+                    }
                     progressBar.style.width = `${data.progress}%`;
                     progressBar.setAttribute('aria-valuenow', data.progress);
+                })
+                .catch(error => {
+                    console.error('Error updating progress:', error);
                 });
         } else {
             progressBar.style.width = `${progress}%`;
@@ -209,6 +246,8 @@ class Questionnaire {
 
     showError(message) {
         const container = document.getElementById('questionnaire-container');
+        if (!container) return;
+
         const errorDiv = document.createElement('div');
         errorDiv.className = 'alert alert-danger alert-dismissible fade show';
         errorDiv.innerHTML = `
@@ -222,6 +261,10 @@ class Questionnaire {
         if (await this.validateCurrentAnswer()) {
             try {
                 const validateResponse = await fetch('/api/validate-answers');
+                if (!validateResponse.ok) {
+                    throw new Error('Failed to validate answers');
+                }
+
                 const validation = await validateResponse.json();
                 
                 if (!validation.is_valid) {
@@ -235,6 +278,11 @@ class Questionnaire {
                 const response = await fetch('/api/generate-roadmap', {
                     method: 'POST'
                 });
+
+                if (!response.ok) {
+                    throw new Error('Failed to generate roadmap');
+                }
+
                 const result = await response.json();
                 
                 if (result.status === 'success') {

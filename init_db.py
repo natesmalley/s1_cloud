@@ -1,6 +1,11 @@
 from app import create_app
 from extensions import db
 from models import Question
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def init_questions():
     questions = [
@@ -41,29 +46,36 @@ def init_questions():
         }
     ]
 
-    for q_data in questions:
-        q = Question.query.filter_by(text=q_data['text']).first()
-        if not q:
-            q = Question(
-                text=q_data['text'],
-                question_type=q_data['question_type'],
-                options=q_data.get('options'),
-                required=q_data.get('required', True),
-                validation_rules=q_data.get('validation_rules'),
-                order=q_data.get('order', 0)
-            )
-            db.session.add(q)
-    
-    db.session.commit()
+    try:
+        for q_data in questions:
+            q = Question.query.filter_by(text=q_data['text']).first()
+            if not q:
+                q = Question(
+                    text=q_data['text'],
+                    question_type=q_data['question_type'],
+                    options=q_data.get('options'),
+                    required=q_data.get('required', True),
+                    validation_rules=q_data.get('validation_rules'),
+                    order=q_data.get('order', 0)
+                )
+                db.session.add(q)
+        
+        db.session.commit()
+        logger.info("Questions initialized successfully")
+    except Exception as e:
+        logger.error(f"Error initializing questions: {e}")
+        db.session.rollback()
+        raise
 
 if __name__ == '__main__':
     app = create_app()
     with app.app_context():
-        # Drop all tables and recreate them
-        db.drop_all()
-        db.session.commit()
-        db.create_all()
-        
-        # Initialize questions
-        init_questions()
-        print("Database initialized with questions!")
+        try:
+            db.drop_all()
+            db.session.commit()
+            db.create_all()
+            init_questions()
+            print("Database initialized successfully!")
+        except Exception as e:
+            print(f"Error initializing database: {e}")
+            db.session.rollback()
