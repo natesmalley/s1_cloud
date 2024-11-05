@@ -13,79 +13,6 @@ logger = logging.getLogger(__name__)
 # Create Flask app instance
 flask_app = create_app()
 
-def apply_custom_css():
-    st.markdown('''
-        <style>
-        /* Custom tooltip styles */
-        .tooltip {
-            position: relative;
-            display: inline-block;
-            cursor: pointer;
-        }
-        
-        .tooltip .tooltiptext {
-            visibility: hidden;
-            width: 300px;
-            background-color: var(--s1-dark-blue);
-            color: white;
-            text-align: left;
-            padding: 10px;
-            border-radius: 4px;
-            border: 1px solid var(--s1-purple);
-            position: absolute;
-            z-index: 1;
-            right: 100%;
-            top: -5px;
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-        
-        .tooltip:hover .tooltiptext {
-            visibility: visible;
-            opacity: 1;
-        }
-        
-        /* SentinelOne Colors */
-        :root {
-            --s1-purple: #5046E4;
-            --s1-dark-blue: #1B1B27;
-            --s1-light-gray: #F5F5F7;
-        }
-        
-        /* Main elements */
-        .stApp {
-            background-color: var(--s1-dark-blue);
-        }
-        
-        /* Buttons */
-        .stButton > button {
-            background-color: var(--s1-purple);
-            color: white;
-            border: none;
-            padding: 0.5rem 1rem;
-            border-radius: 4px;
-        }
-        
-        .stButton > button:hover {
-            background-color: #6357FF;
-        }
-        
-        /* Checkboxes */
-        .stCheckbox > label {
-            color: white !important;
-        }
-        
-        .stCheckbox > div[role="checkbox"] {
-            border-color: var(--s1-purple) !important;
-        }
-        
-        .stCheckbox > div[role="checkbox"][aria-checked="true"] {
-            background-color: var(--s1-purple) !important;
-        }
-        </style>
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    ''', unsafe_allow_html=True)
-
 def validate_answer(selected_initiatives):
     """Validate the selected initiatives"""
     if not selected_initiatives:
@@ -148,126 +75,46 @@ def calculate_progress():
             logger.error(f"Error calculating progress: {str(e)}")
             return 0
 
-def show_setup():
-    st.header('Setup Information')
-    
-    with st.form("setup_form"):
-        st.subheader("Recorder Information")
-        recorder_name = st.text_input("Name *", key="recorder_name")
-        recorder_email = st.text_input("Email *", key="recorder_email")
-        
-        st.subheader("Customer Information")
-        customer_company = st.text_input("Company *", key="customer_company")
-        customer_name = st.text_input("Name *", key="customer_name")
-        customer_title = st.text_input("Title *", key="customer_title")
-        customer_email = st.text_input("Email *", key="customer_email")
-        
-        if st.form_submit_button("Save and Continue"):
-            if not all([recorder_name, recorder_email, customer_company, 
-                       customer_name, customer_title, customer_email]):
-                st.error("All fields are required")
-                return
-                
-            with flask_app.app_context():
-                try:
-                    user = User.query.get(st.session_state.user_id)
-                    if user:
-                        user.recorder_name = recorder_name
-                        user.recorder_email = recorder_email
-                        user.customer_company = customer_company
-                        user.customer_name = customer_name
-                        user.customer_title = customer_title
-                        user.customer_email = customer_email
-                        user.setup_completed = True
-                        db.session.commit()
-                        st.session_state.setup_completed = True
-                        st.success("Setup completed successfully!")
-                        st.rerun()
-                    else:
-                        st.error("User not found. Please try logging in again.")
-                except Exception as e:
-                    logger.error(f"Error saving setup information: {str(e)}")
-                    st.error(f"Error saving setup information: {str(e)}")
-
-def show_questionnaire():
-    st.header('Strategic Assessment Questionnaire')
-    st.markdown('---')
-    
+def show_strategic_goals():
+    """Show the initial strategic goals question"""
     st.write('### Please select your top Business Initiatives in Cloud Security (select 1-3)')
     
     initiatives = [
         {
             'title': 'Cloud Adoption and Business Alignment',
-            'description': 'Ensure cloud adoption is in line with the organization\'s overarching business objectives, providing a secure and compliant foundation for business activities.',
+            'description': 'Ensure cloud adoption supports overall business objectives.',
         },
         {
             'title': 'Achieving Key Business Outcomes',
-            'description': 'Drive security practices that directly support business outcomes, ensuring risk mitigation efforts contribute positively to overall business performance.',
+            'description': 'Drive security practices that directly support business outcomes.',
         },
         {
             'title': 'Maximizing ROI for Cloud Security',
-            'description': 'Evaluate cloud security investments to maximize return on investment, ensuring that security measures are both effective and financially sustainable.',
+            'description': 'Evaluate cloud security investments to maximize return on investment.',
         },
         {
             'title': 'Integration of Cloud Security with Business Strategy',
-            'description': 'Integrate cloud security practices within the broader IT and business strategies to ensure cohesive growth, operational efficiency, and security posture.',
+            'description': 'Integrate cloud security practices within broader IT strategies.',
         },
         {
             'title': 'Driving Innovation and Value Delivery',
-            'description': 'Facilitate secure innovation by embedding proactive risk management into cloud projects, enabling business opportunities while minimizing risk.',
+            'description': 'Facilitate secure innovation and risk management.',
         },
         {
             'title': 'Supporting Digital Transformation',
-            'description': 'Leverage cloud security to support digital transformation initiatives, ensuring that new technologies and processes are securely adopted.',
+            'description': 'Support digital transformation initiatives securely.',
         },
         {
             'title': 'Balancing Rapid Adoption with Compliance',
-            'description': 'Achieve a balance between rapidly adopting cloud technologies and maintaining compliance, ensuring security does not hinder business agility.',
+            'description': 'Balance rapid cloud adoption with compliance requirements.',
         }
     ]
     
     selected_initiatives = []
     
-    # Get previously selected initiatives from the database
-    with flask_app.app_context():
-        try:
-            response = Response.query.filter_by(
-                user_id=st.session_state.user_id,
-                question_id=1
-            ).first()
-            if response and response.answer:
-                saved_initiatives = json.loads(response.answer)
-            else:
-                saved_initiatives = []
-        except Exception as e:
-            logger.error(f"Error loading saved initiatives: {str(e)}")
-            saved_initiatives = []
-
     for initiative in initiatives:
-        is_selected = initiative['title'] in saved_initiatives
-        is_disabled = len(selected_initiatives) >= 3 and not is_selected
-        
-        col1, col2, col3 = st.columns([0.1, 0.8, 0.1])
-        with col1:
-            if st.checkbox(
-                label=initiative['title'],
-                key=f"cb_{initiative['title']}",
-                label_visibility="collapsed"
-            ):
-                selected_initiatives.append(initiative['title'])
-        with col2:
-            st.markdown(f'''
-                <div style="display: flex; align-items: center;">
-                    <strong>{initiative['title']}</strong>
-                </div>
-            ''', unsafe_allow_html=True)
-        with col3:
-            st.markdown(f'''
-                <div class="tooltip">
-                    <i class="fas fa-info-circle"></i>
-                    <span class="tooltiptext">{initiative['description']}</span>
-                </div>
-            ''', unsafe_allow_html=True)
+        if st.checkbox(initiative['title'], help=initiative['description']):
+            selected_initiatives.append(initiative['title'])
     
     if selected_initiatives:
         is_valid, validation_message = validate_answer(selected_initiatives)
@@ -280,6 +127,34 @@ def show_questionnaire():
             st.warning(validation_message)
     else:
         st.warning('Please select at least one option')
+
+def show_questionnaire():
+    st.header('Strategic Assessment Questionnaire')
+    st.markdown('---')
+    
+    # Get user's response for strategic goals
+    with flask_app.app_context():
+        strategic_response = Response.query.filter_by(
+            user_id=st.session_state.user_id,
+            question_id=1
+        ).first()
+        
+        if not strategic_response:
+            show_strategic_goals()
+        else:
+            selected_goals = json.loads(strategic_response.answer)
+            # Get questions for selected goals
+            questions = Question.query.filter(
+                Question.parent_answer.in_(selected_goals)
+            ).order_by(Question.order).all()
+            
+            for question in questions:
+                st.subheader(question.text)
+                for option in question.options:
+                    st.checkbox(
+                        option['title'],
+                        help=option['description']
+                    )
     
     # Show progress
     progress = calculate_progress()
@@ -288,56 +163,26 @@ def show_questionnaire():
     st.sidebar.write(f'{progress:.0f}% Complete')
 
 def main():
-    apply_custom_css()
-    
-    col1, col2 = st.columns([0.1, 0.9])
-    with col1:
-        try:
-            # Fix the file name to include the space
-            st.image('paladin _inPixio.png', width=80)
-        except Exception as e:
-            logger.error(f"Error loading logo: {str(e)}")
-            # Show a placeholder if image fails to load
-            st.markdown('''
-                <div style="width: 80px; height: 80px; background-color: var(--s1-purple); 
-                     border-radius: 8px; display: flex; align-items: center; 
-                     justify-content: center; color: white; font-weight: bold;">
-                    S1
-                </div>
-            ''', unsafe_allow_html=True)
-    with col2:
-        st.title('Cloud Security Roadmap Guide')
-    
+    # Initialize session state for user authentication
     if 'authenticated' not in st.session_state:
         st.session_state.authenticated = False
-        
+
     if not st.session_state.authenticated:
-        if st.button('Sign in with Google'):
-            with flask_app.app_context():
-                # Create or get user
-                user = User.query.filter_by(email="test@example.com").first()
-                if not user:
-                    user = User(
-                        username="Test User",
-                        email="test@example.com"
-                    )
-                    db.session.add(user)
-                    db.session.commit()
-                
-                st.session_state.authenticated = True
-                st.session_state.user_id = user.id
-                st.rerun()
-    else:
-        # Check if setup is completed
-        if 'setup_completed' not in st.session_state:
-            with flask_app.app_context():
-                user = User.query.filter_by(id=st.session_state.user_id).first()
-                st.session_state.setup_completed = user.setup_completed if user else False
-        
-        if not st.session_state.setup_completed:
-            show_setup()
-        else:
-            show_questionnaire()
+        # Create or get test user for development
+        with flask_app.app_context():
+            user = User.query.filter_by(email="test@example.com").first()
+            if not user:
+                user = User(
+                    username="Test User",
+                    email="test@example.com"
+                )
+                db.session.add(user)
+                db.session.commit()
+            
+            st.session_state.authenticated = True
+            st.session_state.user_id = user.id
+
+    show_questionnaire()
 
 if __name__ == '__main__':
     import sys
