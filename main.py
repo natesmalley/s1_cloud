@@ -63,11 +63,6 @@ def apply_custom_css():
             background-color: rgba(80, 70, 228, 0.1);
             border-color: var(--s1-purple);
         }
-
-        /* Description text */
-        small {
-            color: var(--bs-gray-400);
-        }
         </style>
     ''', unsafe_allow_html=True)
 
@@ -141,41 +136,90 @@ def save_answer(selected_initiatives):
 
 def show_questionnaire():
     st.header('Strategic Assessment Questionnaire')
-    st.markdown('---')  # Divider
+    st.markdown('---')
     
     st.write('### Please select your top Business Initiatives in Cloud Security (select 1-3)')
     
     initiatives = [
         {
             'title': 'Cloud Adoption and Business Alignment',
-            'description': 'Ensure cloud adoption supports overall business objectives by leveraging SentinelOne\'s Unified Visibility and Secrets Scanning.'
+            'description': 'Ensure cloud adoption supports overall business objectives by leveraging SentinelOne\'s Unified Visibility and Secrets Scanning.',
+            'icon': '☁️'
         },
         {
             'title': 'Achieving Key Business Outcomes',
-            'description': 'Use SentinelOne\'s Offensive Security Engine to drive business outcomes by proactively identifying and mitigating risks.'
+            'description': 'Use SentinelOne\'s Offensive Security Engine to drive business outcomes by proactively identifying and mitigating risks.',
+            'icon': '🎯'
         },
         {
             'title': 'Maximizing ROI for Cloud Security',
-            'description': 'Optimize return on investment with SentinelOne\'s AI-Powered Threat Detection and Response.'
+            'description': 'Optimize return on investment with SentinelOne\'s AI-Powered Threat Detection and Response.',
+            'icon': '💰'
         },
         {
             'title': 'Integration of Cloud Security with Business Strategy',
-            'description': 'Align cloud security goals with broader IT and business strategies using SentinelOne\'s Unified Platform.'
+            'description': 'Align cloud security goals with broader IT and business strategies using SentinelOne\'s Unified Platform.',
+            'icon': '🔄'
         },
         {
             'title': 'Driving Innovation and Value Delivery',
-            'description': 'Leverage SentinelOne\'s Offensive Security Engine to enable innovation while reducing vulnerabilities.'
+            'description': 'Leverage SentinelOne\'s Offensive Security Engine to enable innovation while reducing vulnerabilities.',
+            'icon': '💡'
         },
         {
             'title': 'Supporting Digital Transformation',
-            'description': 'Enhance digital transformation initiatives using SentinelOne\'s Agentless and Agent-Based Capabilities.'
+            'description': 'Enhance digital transformation initiatives using SentinelOne\'s Agentless and Agent-Based Capabilities.',
+            'icon': '🚀'
         },
         {
             'title': 'Balancing Rapid Adoption with Compliance',
-            'description': 'Maintain security compliance using SentinelOne\'s Secrets Scanning and Cloud Workload Security.'
+            'description': 'Maintain security compliance using SentinelOne\'s Secrets Scanning and Cloud Workload Security.',
+            'icon': '⚖️'
         }
     ]
     
+    # Add CSS for tooltips
+    st.markdown('''
+        <style>
+        .tooltip-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+        .tooltip-wrapper:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+        .tooltip-text {
+            visibility: hidden;
+            opacity: 0;
+            background-color: var(--s1-dark-blue);
+            color: white;
+            text-align: left;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid var(--s1-purple);
+            position: absolute;
+            z-index: 1;
+            width: 300px;
+            transition: opacity 0.3s;
+        }
+        .initiative-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding: 0.5rem;
+            border-radius: 4px;
+        }
+        .initiative-row:hover {
+            background-color: rgba(80, 70, 228, 0.1);
+        }
+        .initiative-icon {
+            margin-right: 0.5rem;
+            font-size: 1.2rem;
+        }
+        </style>
+    ''', unsafe_allow_html=True)
+
     selected_initiatives = []
     
     # Get previously selected initiatives from the database
@@ -195,29 +239,34 @@ def show_questionnaire():
         
         col1, col2 = st.columns([0.1, 0.9])
         with col1:
-            # Fix: Remove the empty string and use only the label parameter
-            if st.checkbox(label=initiative['title'], 
-                         value=is_selected,
-                         disabled=is_disabled,
-                         key=f"cb_{initiative['title']}"):
+            if st.checkbox(
+                label="",  # Empty label since we'll show the title separately
+                value=is_selected,
+                disabled=is_disabled,
+                key=f"cb_{initiative['title']}"
+            ):
                 selected_initiatives.append(initiative['title'])
         with col2:
-            st.markdown(f"**{initiative['title']}**")
-            st.markdown(f"<small>{initiative['description']}</small>", unsafe_allow_html=True)
+            st.markdown(f'''
+                <div class="initiative-row">
+                    <span class="initiative-icon">{initiative['icon']}</span>
+                    <div class="tooltip-wrapper">
+                        <strong>{initiative['title']}</strong>
+                        <div class="tooltip-text">{initiative['description']}</div>
+                    </div>
+                </div>
+            ''', unsafe_allow_html=True)
     
-    # Add a container for the selection count
-    if len(selected_initiatives) > 0:
+    if selected_initiatives:
         st.success(f'Selected {len(selected_initiatives)} of 3 maximum options')
     else:
         st.warning('Please select at least one option')
     
-    # Save answers when changes occur
     if selected_initiatives:
         save_success, save_error = save_answer(selected_initiatives)
         if not save_success:
             st.error(save_error)
 
-    # Show current progress
     progress = calculate_progress()
     st.sidebar.header('Progress')
     st.sidebar.progress(progress / 100)
