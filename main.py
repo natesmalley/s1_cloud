@@ -28,10 +28,6 @@ def apply_custom_css():
             background-color: var(--s1-dark-blue);
         }
         
-        .stTitle {
-            color: white !important;
-        }
-        
         /* Buttons */
         .stButton > button {
             background-color: var(--s1-purple);
@@ -58,104 +54,8 @@ def apply_custom_css():
             background-color: var(--s1-purple) !important;
         }
         </style>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     ''', unsafe_allow_html=True)
-
-def validate_setup_form(recorder_name, recorder_email, customer_company, 
-                       customer_name, customer_title, customer_email):
-    """Validate the setup form inputs"""
-    if not all([recorder_name, recorder_email, customer_company, 
-                customer_name, customer_title, customer_email]):
-        return False, "All fields are required"
-    
-    # Basic email validation
-    if not '@' in recorder_email or not '@' in customer_email:
-        return False, "Please enter valid email addresses"
-        
-    return True, None
-
-def show_setup():
-    st.header('Setup Information')
-    
-    # Verify user exists before showing form
-    with flask_app.app_context():
-        user = User.query.filter_by(id=st.session_state.user_id).first()
-        if not user:
-            st.error("User session expired. Please sign in again.")
-            st.session_state.authenticated = False
-            st.rerun()
-            return
-    
-    with st.form("setup_form"):
-        st.subheader("Recorder Information")
-        recorder_name = st.text_input("Name *", key="recorder_name")
-        recorder_email = st.text_input("Email *", key="recorder_email")
-        
-        st.subheader("Customer Information")
-        customer_company = st.text_input("Company *", key="customer_company")
-        customer_name = st.text_input("Name *", key="customer_name")
-        customer_title = st.text_input("Title *", key="customer_title")
-        customer_email = st.text_input("Email *", key="customer_email")
-        
-        submitted = st.form_submit_button("Save and Continue")
-        
-        if submitted:
-            is_valid, error_message = validate_setup_form(
-                recorder_name, recorder_email, customer_company,
-                customer_name, customer_title, customer_email
-            )
-            
-            if is_valid:
-                with flask_app.app_context():
-                    try:
-                        user = User.query.filter_by(id=st.session_state.user_id).first()
-                        if user:
-                            user.recorder_name = recorder_name
-                            user.recorder_email = recorder_email
-                            user.customer_company = customer_company
-                            user.customer_name = customer_name
-                            user.customer_title = customer_title
-                            user.customer_email = customer_email
-                            user.setup_completed = True
-                            db.session.commit()
-                            st.session_state.setup_completed = True
-                            st.success("Setup completed successfully!")
-                            st.rerun()
-                        else:
-                            st.error("User not found. Please try logging in again.")
-                    except Exception as e:
-                        logger.error(f"Error saving setup information: {str(e)}")
-                        st.error(f"Error saving setup information: {str(e)}")
-            else:
-                st.error(error_message)
-
-def calculate_progress():
-    """Calculate user's progress through the questionnaire"""
-    with flask_app.app_context():
-        try:
-            if 'user_id' not in st.session_state:
-                return 0
-            
-            total_questions = Question.query.count()
-            if total_questions == 0:
-                return 0
-                
-            answered_questions = Response.query.filter_by(
-                user_id=st.session_state.user_id,
-                is_valid=True
-            ).count()
-            
-            progress = (answered_questions / total_questions) * 100
-            
-            # Update user's progress
-            user = User.query.filter_by(id=st.session_state.user_id).first()
-            if user:
-                user.progress_percentage = progress
-                db.session.commit()
-                
-            return progress
-        except Exception as e:
-            logger.error(f"Error calculating progress: {str(e)}")
-            return 0
 
 def validate_answer(selected_initiatives):
     """Validate the selected initiatives"""
@@ -173,11 +73,6 @@ def save_answer(selected_initiatives):
             is_valid, validation_message = validate_answer(selected_initiatives)
             if not is_valid:
                 return False, validation_message
-
-            # Verify user exists
-            user = User.query.filter_by(id=st.session_state.user_id).first()
-            if not user:
-                return False, "User not found"
 
             # Save the response
             response = Response.query.filter_by(
@@ -200,57 +95,105 @@ def save_answer(selected_initiatives):
                 db.session.add(response)
             
             db.session.commit()
-            
-            # Update progress in session
-            progress = calculate_progress()
-            st.session_state.progress = progress
-            
             return True, None
         except Exception as e:
             logger.error(f"Error saving answer: {str(e)}")
             db.session.rollback()
             return False, f"Failed to save answer: {str(e)}"
 
+def calculate_progress():
+    """Calculate user's progress through the questionnaire"""
+    with flask_app.app_context():
+        try:
+            total_questions = Question.query.count()
+            if total_questions == 0:
+                return 0
+                
+            answered_questions = Response.query.filter_by(
+                user_id=st.session_state.user_id,
+                is_valid=True
+            ).count()
+            
+            return (answered_questions / total_questions) * 100
+        except Exception as e:
+            logger.error(f"Error calculating progress: {str(e)}")
+            return 0
+
+def show_setup():
+    st.header('Setup Information')
+    
+    with st.form("setup_form"):
+        st.subheader("Recorder Information")
+        recorder_name = st.text_input("Name *", key="recorder_name")
+        recorder_email = st.text_input("Email *", key="recorder_email")
+        
+        st.subheader("Customer Information")
+        customer_company = st.text_input("Company *", key="customer_company")
+        customer_name = st.text_input("Name *", key="customer_name")
+        customer_title = st.text_input("Title *", key="customer_title")
+        customer_email = st.text_input("Email *", key="customer_email")
+        
+        if st.form_submit_button("Save and Continue"):
+            if not all([recorder_name, recorder_email, customer_company, 
+                       customer_name, customer_title, customer_email]):
+                st.error("All fields are required")
+                return
+                
+            with flask_app.app_context():
+                try:
+                    user = User.query.get(st.session_state.user_id)
+                    if user:
+                        user.recorder_name = recorder_name
+                        user.recorder_email = recorder_email
+                        user.customer_company = customer_company
+                        user.customer_name = customer_name
+                        user.customer_title = customer_title
+                        user.customer_email = customer_email
+                        user.setup_completed = True
+                        db.session.commit()
+                        st.session_state.setup_completed = True
+                        st.success("Setup completed successfully!")
+                        st.rerun()
+                    else:
+                        st.error("User not found. Please try logging in again.")
+                except Exception as e:
+                    logger.error(f"Error saving setup information: {str(e)}")
+                    st.error(f"Error saving setup information: {str(e)}")
+
 def show_questionnaire():
     st.header('Strategic Assessment Questionnaire')
+    st.markdown('---')
     
     st.write('### Please select your top Business Initiatives in Cloud Security (select 1-3)')
     
     initiatives = [
         {
             'title': 'Cloud Adoption and Business Alignment',
-            'description': 'Ensure cloud adoption supports overall business objectives by leveraging SentinelOne\'s Unified Visibility and Secrets Scanning.',
-            'icon': '☁️'
+            'description': 'Ensure cloud adoption is in line with the organization\'s overarching business objectives, providing a secure and compliant foundation for business activities.',
         },
         {
             'title': 'Achieving Key Business Outcomes',
-            'description': 'Use SentinelOne\'s Offensive Security Engine to drive business outcomes by proactively identifying and mitigating risks.',
-            'icon': '🎯'
+            'description': 'Drive security practices that directly support business outcomes, ensuring risk mitigation efforts contribute positively to overall business performance.',
         },
         {
             'title': 'Maximizing ROI for Cloud Security',
-            'description': 'Optimize return on investment with SentinelOne\'s AI-Powered Threat Detection and Response.',
-            'icon': '💰'
+            'description': 'Evaluate cloud security investments to maximize return on investment, ensuring that security measures are both effective and financially sustainable.',
         },
         {
             'title': 'Integration of Cloud Security with Business Strategy',
-            'description': 'Align cloud security goals with broader IT and business strategies using SentinelOne\'s Unified Platform.',
-            'icon': '🔄'
+            'description': 'Integrate cloud security practices within the broader IT and business strategies to ensure cohesive growth, operational efficiency, and security posture.',
         },
         {
             'title': 'Driving Innovation and Value Delivery',
-            'description': 'Leverage SentinelOne\'s Offensive Security Engine to enable innovation while reducing vulnerabilities.',
-            'icon': '💡'
+            'description': 'Facilitate secure innovation by embedding proactive risk management into cloud projects, enabling business opportunities while minimizing risk.',
         },
         {
             'title': 'Supporting Digital Transformation',
-            'description': 'Enhance digital transformation initiatives using SentinelOne\'s Agentless and Agent-Based Capabilities.',
-            'icon': '🚀'
+            'description': 'Leverage cloud security to support digital transformation initiatives, ensuring that new technologies and processes are securely adopted.',
         },
         {
             'title': 'Balancing Rapid Adoption with Compliance',
-            'description': 'Maintain security compliance using SentinelOne\'s Secrets Scanning and Cloud Workload Security.',
-            'icon': '⚖️'
+            'description': 'Achieve a balance between rapidly adopting cloud technologies and maintaining compliance, ensuring security does not hinder business agility.',
         }
     ]
     
@@ -275,28 +218,25 @@ def show_questionnaire():
         is_selected = initiative['title'] in saved_initiatives
         is_disabled = len(selected_initiatives) >= 3 and not is_selected
         
-        col1, col2 = st.columns([0.1, 0.9])
+        col1, col2, col3 = st.columns([0.1, 0.8, 0.1])
         with col1:
             if st.checkbox(
-                label=initiative['title'],  # Use actual title instead of empty string
-                value=is_selected,
-                disabled=is_disabled,
+                label=initiative['title'],
                 key=f"cb_{initiative['title']}",
-                label_visibility="collapsed"  # Hide label but keep it for accessibility
+                label_visibility="collapsed"
             ):
                 selected_initiatives.append(initiative['title'])
         with col2:
             st.markdown(f'''
-                <div style="padding: 10px; border-radius: 5px; background-color: rgba(80, 70, 228, 0.1);">
-                    <div style="display: flex; align-items: center;">
-                        <span style="font-size: 24px; margin-right: 10px;">{initiative['icon']}</span>
-                        <div>
-                            <strong style="color: white;">{initiative['title']}</strong>
-                            <p style="margin: 5px 0 0 0; color: #aaa; font-size: 0.9em;">
-                                {initiative['description']}
-                            </p>
-                        </div>
-                    </div>
+                <div style="display: flex; align-items: center;">
+                    <strong>{initiative['title']}</strong>
+                </div>
+            ''', unsafe_allow_html=True)
+        with col3:
+            st.markdown(f'''
+                <div class="tooltip">
+                    <i class="fas fa-info-circle"></i>
+                    <span class="tooltiptext">{initiative['description']}</span>
                 </div>
             ''', unsafe_allow_html=True)
     
@@ -321,17 +261,10 @@ def show_questionnaire():
 def main():
     apply_custom_css()
     
-    # Initialize database tables at startup
-    with flask_app.app_context():
-        try:
-            db.create_all()
-        except Exception as e:
-            logger.error(f"Error initializing database: {str(e)}")
-    
     col1, col2 = st.columns([0.1, 0.9])
     with col1:
         try:
-            st.image('paladin _inPixio.png', width=80)
+            st.image('paladin_inPixio.png', width=80)
         except Exception:
             st.write("S1")
     with col2:
@@ -369,8 +302,15 @@ def main():
             show_questionnaire()
 
 if __name__ == '__main__':
-    # Set Streamlit to run on port 5000
     import sys
+    from init_db import clear_and_init_db
+    
+    app = create_app()
+    with app.app_context():
+        # Initialize database first
+        clear_and_init_db()
+        
+    # Then start Streamlit
     if len(sys.argv) == 1:
-        sys.argv.extend(["run", "--server.port=5000", "--server.address=0.0.0.0"])
+        sys.argv.extend(['run', '--server.port=5000', '--server.address=0.0.0.0'])
     main()
