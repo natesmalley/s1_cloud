@@ -7,7 +7,7 @@ from flask_login import login_required, login_user, logout_user, current_user
 from oauthlib.oauth2 import WebApplicationClient, OAuth2Error
 from extensions import db
 from models import User
-from urllib.parse import urlencode, urlparse, urlunparse
+from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -28,9 +28,19 @@ REQUIRED_SCOPES = [
     "https://www.googleapis.com/auth/documents"
 ]
 
-def ensure_https_url(url):
-    """Ensure URL uses HTTPS protocol"""
-    return url.replace('http://', 'https://', 1)
+def sanitize_callback_url(url):
+    parsed = urlparse(url)
+    # Ensure HTTPS
+    scheme = 'https'
+    # Keep only essential query parameters
+    query_params = parse_qs(parsed.query)
+    essential_params = {
+        'code': query_params.get('code', [None])[0],
+        'scope': query_params.get('scope', [None])[0]
+    }
+    # Rebuild query string with only essential parameters
+    query_string = urlencode({k: v for k, v in essential_params.items() if v is not None})
+    return urlunparse((scheme, parsed.netloc, parsed.path, '', query_string, ''))
 
 def log_request_details():
     """Log detailed request information"""
@@ -101,11 +111,14 @@ def login():
 @google_auth.route("/google_login/callback")
 def callback():
     try:
-        # Get the full URL and ensure HTTPS
-        callback_url = request.url.replace('http://', 'https://', 1)
-        logger.info(f"Received callback at: {callback_url}")
+        # Log incoming request details
+        logger.info(f"Raw callback URL: {request.url}")
         
-        # Extract the code before any other processing
+        # Sanitize the callback URL
+        callback_url = sanitize_callback_url(request.url)
+        logger.info(f"Sanitized callback URL: {callback_url}")
+        
+        # Extract and validate the authorization code
         code = request.args.get("code")
         if not code:
             raise OAuth2Error("Missing authorization code")
@@ -137,7 +150,8 @@ def callback():
                 'error_type': 'TokenError',
                 'error_message': token_response.text,
                 'status_code': token_response.status_code,
-                'callback_url': callback_url,
+                'raw_url': request.url,
+                'sanitized_url': callback_url,
                 'request_details': request_details
             }
             logger.error(f"Token Error: {json.dumps(error_details, indent=2)}")
@@ -157,7 +171,8 @@ def callback():
                 'error_type': 'UserInfoError',
                 'error_message': userinfo_response.text,
                 'status_code': userinfo_response.status_code,
-                'callback_url': callback_url,
+                'raw_url': request.url,
+                'sanitized_url': callback_url,
                 'request_details': request_details
             }
             logger.error(f"User Info Error: {json.dumps(error_details, indent=2)}")
@@ -171,7 +186,8 @@ def callback():
             error_details = {
                 'error_type': 'EmailNotVerified',
                 'email': userinfo.get('email'),
-                'callback_url': callback_url,
+                'raw_url': request.url,
+                'sanitized_url': callback_url,
                 'request_details': request_details
             }
             logger.error(f"Email Not Verified: {json.dumps(error_details, indent=2)}")
@@ -197,8 +213,8 @@ def callback():
         error_details = {
             'error_type': type(e).__name__,
             'error_message': str(e),
-            'callback_url': request.url,
-            'https_callback_url': request.url.replace('http://', 'https://', 1),
+            'raw_url': request.url,
+            'sanitized_url': callback_url if 'callback_url' in locals() else None,
             'code_present': bool(request.args.get('code')),
             'request_args': dict(request.args)
         }
@@ -212,8 +228,8 @@ def callback():
         error_details = {
             'error_type': type(e).__name__,
             'error_message': str(e),
-            'callback_url': request.url,
-            'https_callback_url': request.url.replace('http://', 'https://', 1),
+            'raw_url': request.url,
+            'sanitized_url': callback_url if 'callback_url' in locals() else None,
             'code_present': bool(request.args.get('code')),
             'request_args': dict(request.args)
         }
