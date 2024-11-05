@@ -31,7 +31,8 @@ REQUIRED_SCOPES = [
 def strip_query_params(url):
     """Remove query parameters from URL while preserving the path"""
     parsed = urlparse(url)
-    return urlunparse((parsed.scheme, parsed.netloc, parsed.path, '', '', ''))
+    base = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
+    return base
 
 def log_request_details():
     """Log detailed request information"""
@@ -43,7 +44,7 @@ def log_request_details():
         'headers': dict(request.headers),
         'method': request.method,
     }
-    logger.debug(f"Request details: {json.dumps(details, indent=2)}")
+    logger.info(f"Request details: {json.dumps(details, indent=2)}")
     return details
 
 def log_oauth_error(error, context="", response=None):
@@ -52,7 +53,9 @@ def log_oauth_error(error, context="", response=None):
         'error_type': type(error).__name__,
         'error_message': str(error),
         'context': context,
-        'request_details': log_request_details()
+        'request_details': log_request_details(),
+        'configured_redirect_uri': REDIRECT_URL,
+        'actual_callback_url': request.url if hasattr(request, 'url') else None
     }
     
     if response:
@@ -112,13 +115,6 @@ def login():
             flash(f"Debug - OAuth Error: {json.dumps(error_details, indent=2)}", "error")
         return redirect(url_for("index"))
 
-    except requests.exceptions.RequestException as e:
-        error_details = log_oauth_error(e, "Failed to connect to Google Discovery URL")
-        flash("Unable to connect to authentication service. Please try again.", "error")
-        if current_app.debug:
-            flash(f"Debug - Connection Error: {json.dumps(error_details, indent=2)}", "error")
-        return redirect(url_for("index"))
-
     except Exception as e:
         error_details = log_oauth_error(e, "Unexpected error during login initiation")
         flash("An unexpected error occurred. Please check the logs.", "error")
@@ -133,31 +129,42 @@ def callback():
         logger.info(f"Using redirect URI: {REDIRECT_URL}")
         request_details = log_request_details()
         
+        # Log comparison of URIs for debugging redirect_uri_mismatch errors
+        actual_callback = strip_query_params(request.url)
+        logger.info(f"Comparing URIs - Configured: {REDIRECT_URL} vs Actual: {actual_callback}")
+        
         code = request.args.get("code")
-        if code:
-            logger.info("Authorization code received")
-            logger.debug(f"Authorization code: {code[:5]}...")  # Log first 5 chars for security
-        else:
+        if not code:
             error = request.args.get("error")
+            if error == "redirect_uri_mismatch":
+                error_details = {
+                    'error': error,
+                    'configured_uri': REDIRECT_URL,
+                    'actual_uri': actual_callback,
+                    'request_details': request_details
+                }
+                logger.error(f"Redirect URI mismatch: {json.dumps(error_details, indent=2)}")
+                flash("Authentication failed: Redirect URI mismatch. Please check the configuration.", "error")
+                if current_app.debug:
+                    flash(f"Debug - URI Mismatch: Expected {REDIRECT_URL}, got {actual_callback}", "error")
+                return redirect(url_for("index"))
+            
             error_details = {
                 'error': error,
                 'error_description': request.args.get("error_description"),
                 'state': request.args.get("state"),
                 'request_details': request_details
             }
-            logger.error(f"No authorization code received: {json.dumps(error_details, indent=2)}")
-            flash(f"Authentication failed: {error_details.get('error_description', 'No authorization code received')}", "error")
+            logger.error(f"Authorization error: {json.dumps(error_details, indent=2)}")
+            flash(f"Authentication failed: {error_details.get('error_description', 'Unknown error')}", "error")
             return redirect(url_for("index"))
 
         logger.info("Fetching Google provider configuration")
         google_provider_cfg = requests.get(GOOGLE_DISCOVERY_URL).json()
         token_endpoint = google_provider_cfg["token_endpoint"]
 
-        # Remove query parameters from request.url
-        clean_url = strip_query_params(request.url)
-        logger.info(f"Using cleaned callback URL: {clean_url}")
-
         logger.info("Preparing token request")
+        # Use the exact REDIRECT_URL for token request
         token_url, headers, body = client.prepare_token_request(
             token_endpoint,
             authorization_response=request.url,
@@ -169,16 +176,12 @@ def callback():
         logger.debug(f"Token request headers: {headers}")
         logger.debug(f"Token request body: {body}")
 
-        logger.info("Sending token request to Google")
         token_response = requests.post(
             token_url,
             headers=headers,
             data=body,
             auth=(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET),
         )
-
-        logger.debug(f"Token response status: {token_response.status_code}")
-        logger.debug(f"Token response headers: {dict(token_response.headers)}")
 
         if not token_response.ok:
             error_details = log_oauth_error(
@@ -192,22 +195,12 @@ def callback():
             return redirect(url_for("index"))
 
         logger.info("Successfully received token response")
-        token_data = token_response.json()
-        logger.debug(f"Token response keys: {', '.join(token_data.keys())}")
-        
-        client.parse_request_body_response(json.dumps(token_data))
+        client.parse_request_body_response(json.dumps(token_response.json()))
 
         logger.info("Fetching user information")
         userinfo_endpoint = google_provider_cfg["userinfo_endpoint"]
         uri, headers, body = client.add_token(userinfo_endpoint)
-        
-        logger.debug(f"User info request - URI: {uri}")
-        logger.debug(f"User info request headers: {headers}")
-        
-        userinfo_response = requests.get(uri, headers=headers, data=body)
-        
-        logger.debug(f"User info response status: {userinfo_response.status_code}")
-        logger.debug(f"User info response headers: {dict(userinfo_response.headers)}")
+        userinfo_response = requests.get(uri, headers=headers)
 
         if not userinfo_response.ok:
             error_details = log_oauth_error(
@@ -250,13 +243,6 @@ def callback():
         flash("Authentication protocol error. Please check the logs.", "error")
         if current_app.debug:
             flash(f"Debug - OAuth Error: {json.dumps(error_details, indent=2)}", "error")
-        return redirect(url_for("index"))
-
-    except requests.exceptions.RequestException as e:
-        error_details = log_oauth_error(e, "Network error during authentication")
-        flash("Network error during authentication. Please try again.", "error")
-        if current_app.debug:
-            flash(f"Debug - Network Error: {json.dumps(error_details, indent=2)}", "error")
         return redirect(url_for("index"))
 
     except Exception as e:
