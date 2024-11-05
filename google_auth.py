@@ -94,7 +94,7 @@ def login():
         flash("Authentication failed. Please try again.", "error")
         if current_app.debug:
             flash(f"Debug - OAuth Error: {json.dumps(error_details, indent=2)}", "error")
-        return redirect(url_for("index"))
+        return redirect(url_for("routes.index"))
 
     except Exception as e:
         error_details = {
@@ -106,7 +106,7 @@ def login():
         flash("An unexpected error occurred. Please try again.", "error")
         if current_app.debug:
             flash(f"Debug - Error: {json.dumps(error_details, indent=2)}", "error")
-        return redirect(url_for("index"))
+        return redirect(url_for("routes.index"))
 
 @google_auth.route("/google_login/callback")
 def callback():
@@ -158,7 +158,7 @@ def callback():
             flash("Failed to obtain access token. Please try again.", "error")
             if current_app.debug:
                 flash(f"Debug - Token Error: {json.dumps(error_details, indent=2)}", "error")
-            return redirect(url_for("index"))
+            return redirect(url_for("routes.index"))
 
         client.parse_request_body_response(json.dumps(token_response.json()))
         
@@ -179,7 +179,7 @@ def callback():
             flash("Failed to get user information. Please try again.", "error")
             if current_app.debug:
                 flash(f"Debug - User Info Error: {json.dumps(error_details, indent=2)}", "error")
-            return redirect(url_for("index"))
+            return redirect(url_for("routes.index"))
 
         userinfo = userinfo_response.json()
         if not userinfo.get("email_verified"):
@@ -192,7 +192,7 @@ def callback():
             }
             logger.error(f"Email Not Verified: {json.dumps(error_details, indent=2)}")
             flash("Email not verified by Google. Please verify your email first.", "error")
-            return redirect(url_for("index"))
+            return redirect(url_for("routes.index"))
 
         users_email = userinfo["email"]
         users_name = userinfo.get("given_name", users_email.split("@")[0])
@@ -207,7 +207,7 @@ def callback():
         next_page = request.args.get('next')
         if next_page:
             return redirect(next_page)
-        return redirect(url_for("index"))
+        return redirect(url_for("routes.index"))
 
     except OAuth2Error as e:
         error_details = {
@@ -222,7 +222,7 @@ def callback():
         flash("Authentication failed. Please try again.", "error")
         if current_app.debug:
             flash(f"Debug - OAuth Error: {json.dumps(error_details, indent=2)}", "error")
-        return redirect(url_for("index"))
+        return redirect(url_for("routes.index"))
 
     except Exception as e:
         error_details = {
@@ -237,10 +237,10 @@ def callback():
         flash("An unexpected error occurred. Please try again.", "error")
         if current_app.debug:
             flash(f"Debug - Error: {json.dumps(error_details, indent=2)}", "error")
-        return redirect(url_for("index"))
+        return redirect(url_for("routes.index"))
 
 @google_auth.route("/logout")
 @login_required
 def logout():
     logout_user()
-    return redirect(url_for("index"))
+    return redirect(url_for("routes.index"))
