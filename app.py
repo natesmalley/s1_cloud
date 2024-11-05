@@ -1,9 +1,9 @@
 import os
-from flask import Flask, render_template
-from flask_login import login_required, current_user
+from flask import Flask
+from flask_login import current_user
 from extensions import db, login_manager
 import google_auth
-from google_drive import GoogleDriveService
+from routes import routes
 
 def create_app():
     app = Flask(__name__)
@@ -21,27 +21,16 @@ def create_app():
 
     # Register blueprints
     app.register_blueprint(google_auth.google_auth)
-
-    # Routes
-    @app.route('/')
-    def index():
-        if current_user.is_authenticated:
-            return render_template('questionnaire.html')
-        return render_template('index.html')
-
-    @app.route('/setup')
-    @login_required
-    def setup():
-        return render_template('setup.html')
-
-    @app.route('/questionnaire')
-    @login_required
-    def questionnaire():
-        return render_template('questionnaire.html')
+    app.register_blueprint(routes)
 
     # Create all database tables
     with app.app_context():
-        db.create_all()
+        try:
+            db.create_all()
+        except Exception as e:
+            print(f"Error creating database tables: {e}")
+            # Log the error but don't raise it to prevent app from crashing
+            pass
 
     return app
 

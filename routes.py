@@ -1,11 +1,11 @@
-from flask import render_template, jsonify, request, redirect, url_for
+from flask import Blueprint, render_template, jsonify, request
 from flask_login import login_required, current_user
-from app import app
 from extensions import db
 from models import Question, Response, Presentation, User
 from google_drive import GoogleDriveService
 import re
 
+routes = Blueprint('routes', __name__)
 google_drive = GoogleDriveService()
 
 def validate_answer(question, answer):
@@ -51,23 +51,23 @@ def calculate_progress(user_id):
     
     return progress
 
-@app.route('/')
+@routes.route('/')
 def index():
     if current_user.is_authenticated:
-        return redirect(url_for('setup'))
+        return render_template('questionnaire.html')
     return render_template('index.html')
 
-@app.route('/setup')
+@routes.route('/setup')
 @login_required
 def setup():
     return render_template('setup.html')
 
-@app.route('/questionnaire')
+@routes.route('/questionnaire')
 @login_required
 def questionnaire():
     return render_template('questionnaire.html')
 
-@app.route('/api/questions', methods=['GET'])
+@routes.route('/api/questions')
 @login_required
 def get_questions():
     questions = Question.query.order_by(Question.order).all()
@@ -80,7 +80,7 @@ def get_questions():
         'validation_rules': q.validation_rules
     } for q in questions])
 
-@app.route('/api/saved-answers', methods=['GET'])
+@routes.route('/api/saved-answers')
 @login_required
 def get_saved_answers():
     responses = Response.query.filter_by(
@@ -92,7 +92,7 @@ def get_saved_answers():
         'answer': r.answer
     } for r in responses])
 
-@app.route('/api/submit-answer', methods=['POST'])
+@routes.route('/api/submit-answer', methods=['POST'])
 @login_required
 def submit_answer():
     data = request.json
@@ -157,7 +157,7 @@ def submit_answer():
             'message': str(e)
         }), 500
 
-@app.route('/api/progress', methods=['GET'])
+@routes.route('/api/progress')
 @login_required
 def get_progress():
     progress = calculate_progress(current_user.id)
@@ -165,7 +165,7 @@ def get_progress():
         'progress': progress
     })
 
-@app.route('/api/validate-answers', methods=['GET'])
+@routes.route('/api/validate-answers')
 @login_required
 def validate_all_answers():
     questions = Question.query.all()
@@ -193,16 +193,18 @@ def validate_all_answers():
         'invalid_questions': invalid_questions
     })
 
-@app.route('/api/generate-roadmap', methods=['POST'])
+@routes.route('/api/generate-roadmap', methods=['POST'])
 @login_required
 def generate_roadmap():
     # Verify all required questions are answered and valid
     validation_result = validate_all_answers()
-    if not validation_result.json['is_valid']:
+    validation_data = validation_result.get_json()
+    
+    if not validation_data['is_valid']:
         return jsonify({
             'status': 'error',
             'message': 'Please answer all required questions correctly before generating the roadmap',
-            'invalid_questions': validation_result.json['invalid_questions']
+            'invalid_questions': validation_data['invalid_questions']
         }), 400
     
     responses = Response.query.filter_by(
@@ -230,7 +232,7 @@ def generate_roadmap():
     return jsonify({
         'status': 'error',
         'message': 'Failed to create presentation'
-    })
+    }), 500
 
 def generate_roadmap_content(responses):
     content = "# Strategic Roadmap\n\n"
