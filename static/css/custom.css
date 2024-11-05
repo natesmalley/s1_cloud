@@ -1,0 +1,29 @@
+/* Custom styles to complement Bootstrap theme */
+.progress {
+    height: 0.5rem;
+    background-color: var(--bs-gray-700);
+}
+
+.progress-bar {
+    background-color: var(--bs-info);
+    transition: width 0.3s ease;
+}
+
+.card {
+    border-color: var(--bs-gray-700);
+}
+
+.form-check-input:checked {
+    background-color: var(--bs-info);
+    border-color: var(--bs-info);
+}
+
+#navigation-controls {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+}
+
+.question-container {
+    min-height: 200px;
+}

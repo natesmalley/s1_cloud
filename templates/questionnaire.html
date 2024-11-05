@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div id="questionnaire-container">
+            <h2 class="mb-4">Strategic Assessment Questionnaire</h2>
+            <div id="questions-container"></div>
+            <div id="navigation-controls" class="mt-4 d-none">
+                <button id="prev-btn" class="btn btn-secondary">Previous</button>
+                <button id="next-btn" class="btn btn-primary">Next</button>
+                <button id="submit-btn" class="btn btn-success d-none">Generate Roadmap</button>
+            </div>
+        </div>
+        <div id="progress-container" class="mt-4">
+            <div class="progress">
+                <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/questionnaire.js') }}"></script>
+{% endblock %}

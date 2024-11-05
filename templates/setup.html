@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-body">
+                    <h2 class="card-title mb-4">Welcome, {{ current_user.username }}!</h2>
+                    <p class="lead">You're all set to start generating your roadmap.</p>
+                    
+                    <div class="d-grid gap-3">
+                        <a href="{{ url_for('questionnaire') }}" class="btn btn-primary btn-lg">
+                            Start Questionnaire
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
