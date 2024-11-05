@@ -112,10 +112,6 @@ def clear_and_init_db():
             conn.execute(text('DROP SCHEMA public CASCADE;'))
             conn.execute(text('CREATE SCHEMA public;'))
             conn.commit()
-            
-            # Grant necessary permissions
-            conn.execute(text('GRANT ALL ON SCHEMA public TO public;'))
-            conn.commit()
         
         # Create fresh tables
         db.create_all()
