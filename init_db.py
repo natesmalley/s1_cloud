@@ -108,9 +108,13 @@ def clear_and_init_db():
     try:
         # Drop all tables using SQLAlchemy models
         with db.engine.connect() as conn:
-            # Disable foreign key checks temporarily
+            # Disable foreign key checks and drop/create schema
             conn.execute(text('DROP SCHEMA public CASCADE;'))
             conn.execute(text('CREATE SCHEMA public;'))
+            conn.commit()
+            
+            # Grant necessary permissions
+            conn.execute(text('GRANT ALL ON SCHEMA public TO public;'))
             conn.commit()
         
         # Create fresh tables

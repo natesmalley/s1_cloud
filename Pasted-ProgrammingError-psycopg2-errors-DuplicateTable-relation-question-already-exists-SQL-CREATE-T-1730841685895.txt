@@ -1,0 +1,55 @@
+ProgrammingError: (psycopg2.errors.DuplicateTable) relation "question" already exists [SQL: CREATE TABLE question ( id SERIAL NOT NULL, text VARCHAR(500) NOT NULL, question_type VARCHAR(50) NOT NULL, options JSON, required BOOLEAN NOT NULL, validation_rules JSON, parent_question_id INTEGER, parent_answer VARCHAR(500), "order" INTEGER, PRIMARY KEY (id), FOREIGN KEY(parent_question_id) REFERENCES question (id) ) ] (Background on this error at: https://sqlalche.me/e/20/f405)
+Traceback:
+File "/home/runner/S1Cloud/.pythonlibs/lib/python3.11/site-packages/streamlit/runtime/scriptrunner/exec_code.py", line 88, in exec_func_with_error_handling
+    result = func()
+             ^^^^^^
+File "/home/runner/S1Cloud/.pythonlibs/lib/python3.11/site-packages/streamlit/runtime/scriptrunner/script_runner.py", line 579, in code_to_exec
+    exec(code, module.__dict__)
+File "/home/runner/S1Cloud/main.py", line 349, in <module>
+    clear_and_init_db()
+File "/home/runner/S1Cloud/init_db.py", line 117, in clear_and_init_db
+    db.create_all()
+File "/home/runner/S1Cloud/.pythonlibs/lib/python3.11/site-packages/flask_sqlalchemy/extension.py", line 900, in create_all
+    self._call_for_binds(bind_key, "create_all")
+File "/home/runner/S1Cloud/.pythonlibs/lib/python3.11/site-packages/flask_sqlalchemy/extension.py", line 881, in _call_for_binds
+    getattr(metadata, op_name)(bind=engine)
+File "/home/runner/S1Cloud/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/sql/schema.py", line 5868, in create_all
+    bind._run_ddl_visitor(
+File "/home/runner/S1Cloud/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 3253, in _run_ddl_visitor
+    conn._run_ddl_visitor(visitorcallable, element, **kwargs)
+File "/home/runner/S1Cloud/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 2459, in _run_ddl_visitor
+    visitorcallable(self.dialect, self, **kwargs).traverse_single(element)
+File "/home/runner/S1Cloud/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/sql/visitors.py", line 664, in traverse_single
+    return meth(obj, **kw)
+           ^^^^^^^^^^^^^^^
+File "/home/runner/S1Cloud/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/sql/ddl.py", line 918, in visit_metadata
+    self.traverse_single(
+File "/home/runner/S1Cloud/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/sql/visitors.py", line 664, in traverse_single
+    return meth(obj, **kw)
+           ^^^^^^^^^^^^^^^
+File "/home/runner/S1Cloud/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/sql/ddl.py", line 956, in visit_table
+    )._invoke_with(self.connection)
+      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/home/runner/S1Cloud/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/sql/ddl.py", line 314, in _invoke_with
+    return bind.execute(self)
+           ^^^^^^^^^^^^^^^^^^
+File "/home/runner/S1Cloud/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1418, in execute
+    return meth(
+           ^^^^^
+File "/home/runner/S1Cloud/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/sql/ddl.py", line 180, in _execute_on_connection
+    return connection._execute_ddl(
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+File "/home/runner/S1Cloud/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1529, in _execute_ddl
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+File "/home/runner/S1Cloud/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "/home/runner/S1Cloud/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+File "/home/runner/S1Cloud/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+File "/home/runner/S1Cloud/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+File "/home/runner/S1Cloud/.pythonlibs/lib/python3.11/site-packages/sqlalchemy/engine/default.py", line 941, in do_execute
+    cursor.execute(statement, parameters)
