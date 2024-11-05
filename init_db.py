@@ -67,15 +67,29 @@ def init_questions():
         db.session.rollback()
         raise
 
+def clear_and_init_db():
+    # Drop tables in correct order
+    try:
+        # Drop tables in reverse dependency order
+        db.session.execute('DROP TABLE IF EXISTS response CASCADE')
+        db.session.execute('DROP TABLE IF EXISTS presentation CASCADE')
+        db.session.execute('DROP TABLE IF EXISTS question CASCADE')
+        db.session.execute('DROP TABLE IF EXISTS "user" CASCADE')
+        # Drop sequences
+        db.session.execute('DROP SEQUENCE IF EXISTS question_id_seq CASCADE')
+        db.session.commit()
+        
+        # Create fresh tables
+        db.create_all()
+        # Initialize questions
+        init_questions()
+        logger.info("Database initialized successfully!")
+    except Exception as e:
+        logger.error(f"Error initializing database: {e}")
+        db.session.rollback()
+        raise
+
 if __name__ == '__main__':
     app = create_app()
     with app.app_context():
-        try:
-            db.drop_all()
-            db.session.commit()
-            db.create_all()
-            init_questions()
-            print("Database initialized successfully!")
-        except Exception as e:
-            print(f"Error initializing database: {e}")
-            db.session.rollback()
+        clear_and_init_db()

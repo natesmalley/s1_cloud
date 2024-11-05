@@ -82,6 +82,9 @@ def questionnaire():
 def get_questions():
     try:
         questions = Question.query.order_by(Question.order).all()
+        if not questions:
+            logger.warning("No questions found in database")
+            
         return jsonify([{
             'id': q.id,
             'text': q.text,
