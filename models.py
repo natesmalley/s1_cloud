@@ -8,7 +8,7 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256))
     google_drive_folder = db.Column(db.String(256))
-    last_question_id = db.Column(db.Integer, db.ForeignKey('question.id'))
+    last_question_id = db.Column(db.Integer, db.ForeignKey('question.id'), nullable=True)
     progress_percentage = db.Column(db.Float, default=0.0)
 
 class Question(db.Model):
@@ -16,7 +16,7 @@ class Question(db.Model):
     text = db.Column(db.String(500), nullable=False)
     question_type = db.Column(db.String(50), nullable=False)
     options = db.Column(db.JSON)
-    required = db.Column(db.Boolean, default=True)
+    required = db.Column(db.Boolean, default=True, nullable=False)
     validation_rules = db.Column(db.JSON)
     parent_question_id = db.Column(db.Integer, db.ForeignKey('question.id'), nullable=True)
     parent_answer = db.Column(db.String(500), nullable=True)
