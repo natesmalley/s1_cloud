@@ -53,13 +53,14 @@ class Questionnaire {
 
     renderQuestion() {
         const container = document.getElementById('questions-container');
-        if (!container) return;
-        
+        if (!container) {
+            console.error('Questions container not found');
+            return;
+        }
+
         const question = this.questions[this.currentIndex];
         if (!question) return;
-        
-        const savedAnswer = this.answers.get(question.id) || [];
-        
+
         container.innerHTML = `
             <div class="card mb-4">
                 <div class="card-body">
@@ -67,8 +68,12 @@ class Questionnaire {
                         ${question.text}
                         ${question.required ? '<span class="text-danger">*</span>' : ''}
                     </h5>
-                    ${this.renderQuestionInput(question, savedAnswer)}
-                    <div class="selected-count" id="selected-count"></div>
+                    <div class="initiatives-container">
+                        ${this.renderQuestionInput(question)}
+                    </div>
+                    <div class="selected-count mt-3">
+                        Selected ${this.selectedOptions.size} of ${question.validation_rules?.min_count || 0}-${question.validation_rules?.max_count || 3} required options
+                    </div>
                     <div class="invalid-feedback" id="validation-message">
                         ${this.validationErrors.get(question.id) || ''}
                     </div>
@@ -76,15 +81,14 @@ class Questionnaire {
             </div>
         `;
 
-        this.updateSelectedCount();
         this.addOptionClickHandlers();
         feather.replace();
     }
 
-    renderQuestionInput(question, savedAnswer) {
+    renderQuestionInput(question) {
         if (question.question_type === 'multiple_choice' && Array.isArray(question.options)) {
-            return question.options.map((option, index) => `
-                <div class="initiative-option ${savedAnswer.includes(option.title) ? 'selected' : ''}" 
+            return question.options.map(option => `
+                <div class="initiative-option ${this.selectedOptions.has(option.title) ? 'selected' : ''}" 
                      data-option="${option.title}">
                     <div class="initiative-header">
                         <i data-feather="${option.icon}" class="initiative-icon"></i>
@@ -102,32 +106,27 @@ class Questionnaire {
         options.forEach(option => {
             option.addEventListener('click', () => {
                 const optionValue = option.dataset.option;
-                if (option.classList.contains('selected')) {
+                const question = this.questions[this.currentIndex];
+                const maxCount = question.validation_rules?.max_count || 3;
+                const minCount = question.validation_rules?.min_count || 1;
+
+                if (this.selectedOptions.has(optionValue)) {
                     option.classList.remove('selected');
                     this.selectedOptions.delete(optionValue);
-                } else {
-                    const question = this.questions[this.currentIndex];
-                    const maxCount = question.validation_rules?.max_count || Infinity;
-                    
-                    if (this.selectedOptions.size < maxCount) {
-                        option.classList.add('selected');
-                        this.selectedOptions.add(optionValue);
-                    }
+                } else if (this.selectedOptions.size < maxCount) {
+                    option.classList.add('selected');
+                    this.selectedOptions.add(optionValue);
                 }
-                this.updateSelectedCount();
+
                 this.validateCurrentAnswer();
+                
+                // Update the selected count display
+                const countElement = document.querySelector('.selected-count');
+                if (countElement) {
+                    countElement.textContent = `Selected ${this.selectedOptions.size} of ${minCount}-${maxCount} required options`;
+                }
             });
         });
-    }
-
-    updateSelectedCount() {
-        const question = this.questions[this.currentIndex];
-        const countElement = document.getElementById('selected-count');
-        if (countElement && question.validation_rules) {
-            const { min_count, max_count } = question.validation_rules;
-            const currentCount = this.selectedOptions.size;
-            countElement.textContent = `Selected ${currentCount} of ${min_count}-${max_count} required options`;
-        }
     }
 
     async validateCurrentAnswer() {
@@ -160,7 +159,11 @@ class Questionnaire {
                     return true;
                 } else {
                     this.validationErrors.set(question.id, result.message);
-                    this.showValidationError(question.id);
+                    const feedback = document.getElementById('validation-message');
+                    if (feedback) {
+                        feedback.style.display = 'block';
+                        feedback.textContent = result.message;
+                    }
                 }
             }
             
