@@ -34,12 +34,18 @@ def strip_query_params(url):
     base = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
     return base
 
+def ensure_https_url(url):
+    """Ensure URL uses HTTPS protocol"""
+    return url.replace('http://', 'https://', 1)
+
 def log_request_details():
     """Log detailed request information"""
+    protocol = request.headers.get('X-Forwarded-Proto', 'unknown')
     details = {
         'url': request.url,
         'base_url': request.base_url,
         'path': request.path,
+        'protocol': protocol,
         'args': dict(request.args),
         'headers': dict(request.headers),
         'method': request.method,
@@ -69,17 +75,6 @@ def log_oauth_error(error, context="", response=None):
         except:
             pass
     
-    if hasattr(error, 'response'):
-        try:
-            error_details['error_response'] = {
-                'status_code': error.response.status_code,
-                'headers': dict(error.response.headers),
-                'text': error.response.text
-            }
-            error_details['error_response']['json'] = error.response.json()
-        except:
-            pass
-    
     logger.error(f"OAuth Error: {json.dumps(error_details, indent=2)}")
     return error_details
 
@@ -89,10 +84,15 @@ google_auth = Blueprint("google_auth", __name__)
 @google_auth.route("/google_login")
 def login():
     try:
+        # Force HTTPS for the redirect URI
+        if request.headers.get('X-Forwarded-Proto') == 'http':
+            url = request.url.replace('http://', 'https://', 1)
+            return redirect(url)
+            
         logger.info("Initiating Google OAuth login process")
+        logger.info(f"Protocol: {request.headers.get('X-Forwarded-Proto')}")
         request_details = log_request_details()
         logger.info(f"Using redirect URI: {REDIRECT_URL}")
-        logger.debug(f"Requesting scopes: {', '.join(REQUIRED_SCOPES)}")
 
         google_provider_cfg = requests.get(GOOGLE_DISCOVERY_URL).json()
         authorization_endpoint = google_provider_cfg["authorization_endpoint"]
@@ -103,9 +103,7 @@ def login():
             scope=REQUIRED_SCOPES,
         )
         
-        logger.info(f"Redirecting to Google authorization endpoint: {authorization_endpoint}")
         logger.info(f"Full authorization request URI: {request_uri}")
-        
         return redirect(request_uri)
 
     except OAuth2Error as e:
@@ -125,12 +123,15 @@ def login():
 @google_auth.route("/google_login/callback")
 def callback():
     try:
-        logger.info(f"Callback received at: {request.url}")
+        # Ensure the callback URL uses HTTPS when comparing
+        actual_callback = ensure_https_url(request.url)
+        logger.info(f"Callback received at: {actual_callback}")
         logger.info(f"Using redirect URI: {REDIRECT_URL}")
+        logger.info(f"Protocol: {request.headers.get('X-Forwarded-Proto')}")
         request_details = log_request_details()
         
         # Log comparison of URIs for debugging redirect_uri_mismatch errors
-        actual_callback = strip_query_params(request.url)
+        actual_callback = strip_query_params(actual_callback)
         logger.info(f"Comparing URIs - Configured: {REDIRECT_URL} vs Actual: {actual_callback}")
         
         code = request.args.get("code")
@@ -167,15 +168,11 @@ def callback():
         # Use the exact REDIRECT_URL for token request
         token_url, headers, body = client.prepare_token_request(
             token_endpoint,
-            authorization_response=request.url,
+            authorization_response=actual_callback,  # Use HTTPS version
             redirect_url=REDIRECT_URL,
             code=code
         )
         
-        logger.debug(f"Token request details - URL: {token_url}")
-        logger.debug(f"Token request headers: {headers}")
-        logger.debug(f"Token request body: {body}")
-
         token_response = requests.post(
             token_url,
             headers=headers,
