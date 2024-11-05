@@ -4,6 +4,7 @@ class Questionnaire {
         this.currentIndex = 0;
         this.answers = new Map();
         this.validationErrors = new Map();
+        this.selectedOptions = new Set();
         this.initialize();
     }
 
@@ -24,7 +25,6 @@ class Questionnaire {
             const questionsData = await questionsResponse.json();
             const savedAnswers = await answersResponse.json();
             
-            // Validate questions data
             if (!Array.isArray(questionsData) || questionsData.length === 0) {
                 throw new Error('No questions available');
             }
@@ -35,12 +35,16 @@ class Questionnaire {
             if (Array.isArray(savedAnswers)) {
                 savedAnswers.forEach(answer => {
                     this.answers.set(answer.question_id, answer.answer);
+                    if (Array.isArray(answer.answer)) {
+                        answer.answer.forEach(option => this.selectedOptions.add(option));
+                    }
                 });
             }
             
             this.renderQuestion();
             this.showControls();
             this.updateProgress();
+            feather.replace();
         } catch (error) {
             console.error('Error loading questionnaire:', error);
             this.showError(error.message || 'Failed to load questionnaire. Please refresh the page.');
@@ -49,119 +53,89 @@ class Questionnaire {
 
     renderQuestion() {
         const container = document.getElementById('questions-container');
-        if (!container) {
-            console.error('Questions container not found');
-            return;
-        }
-        
-        if (!Array.isArray(this.questions) || !this.questions.length) {
-            this.showError('No questions available. Please refresh the page.');
-            return;
-        }
+        if (!container) return;
         
         const question = this.questions[this.currentIndex];
-        if (!question || !question.type) {
-            this.showError('Invalid question format. Please refresh the page.');
-            return;
-        }
+        if (!question) return;
+        
+        const savedAnswer = this.answers.get(question.id) || [];
         
         container.innerHTML = `
             <div class="card mb-4">
                 <div class="card-body">
-                    <h5 class="card-title">
+                    <h5 class="card-title mb-4">
                         ${question.text}
                         ${question.required ? '<span class="text-danger">*</span>' : ''}
                     </h5>
-                    ${this.renderQuestionInput(question)}
+                    ${this.renderQuestionInput(question, savedAnswer)}
+                    <div class="selected-count" id="selected-count"></div>
                     <div class="invalid-feedback" id="validation-message">
-                        ${this.validationErrors.get(question.id) || 'This field is required'}
+                        ${this.validationErrors.get(question.id) || ''}
                     </div>
                 </div>
             </div>
         `;
 
-        // Add event listeners for real-time validation
-        if (question.type === 'text') {
-            const textarea = container.querySelector('textarea');
-            if (textarea) {
-                textarea.addEventListener('input', () => this.validateCurrentAnswer());
-            }
-        } else {
-            const inputs = container.querySelectorAll('input[type="radio"]');
-            inputs.forEach(input => {
-                if (input) {
-                    input.addEventListener('change', () => this.validateCurrentAnswer());
-                }
-            });
-        }
+        this.updateSelectedCount();
+        this.addOptionClickHandlers();
+        feather.replace();
     }
 
-    renderQuestionInput(question) {
-        if (!question) return '';
-        
-        const savedAnswer = this.answers.get(question.id);
-        const isInvalid = this.validationErrors.has(question.id);
-        
-        switch (question.type) {
-            case 'multiple_choice':
-                return question.options ? question.options.map(option => `
-                    <div class="form-check">
-                        <input class="form-check-input ${isInvalid ? 'is-invalid' : ''}"
-                            type="radio" name="answer" value="${option}"
-                            ${savedAnswer === option ? 'checked' : ''}>
-                        <label class="form-check-label">${option}</label>
+    renderQuestionInput(question, savedAnswer) {
+        if (question.question_type === 'multiple_choice' && Array.isArray(question.options)) {
+            return question.options.map((option, index) => `
+                <div class="initiative-option ${savedAnswer.includes(option.title) ? 'selected' : ''}" 
+                     data-option="${option.title}">
+                    <div class="initiative-header">
+                        <i data-feather="${option.icon}" class="initiative-icon"></i>
+                        <h6 class="initiative-title">${option.title}</h6>
                     </div>
-                `).join('') : '';
-            case 'text':
-                return `
-                    <textarea class="form-control ${isInvalid ? 'is-invalid' : ''}"
-                        rows="3">${savedAnswer || ''}</textarea>
-                `;
-            default:
-                return '<p class="text-danger">Unsupported question type</p>';
+                    <p class="initiative-description">${option.description}</p>
+                </div>
+            `).join('');
         }
+        return '';
     }
 
-    showControls() {
-        const controls = document.getElementById('navigation-controls');
-        const prevBtn = document.getElementById('prev-btn');
-        const nextBtn = document.getElementById('next-btn');
-        const submitBtn = document.getElementById('submit-btn');
-
-        if (!controls || !prevBtn || !nextBtn || !submitBtn) {
-            console.error('Navigation controls not found');
-            return;
-        }
-
-        controls.classList.remove('d-none');
-        prevBtn.disabled = this.currentIndex === 0;
-        nextBtn.classList.toggle('d-none', this.currentIndex === this.questions.length - 1);
-        submitBtn.classList.toggle('d-none', this.currentIndex !== this.questions.length - 1);
-
-        this.setupEventListeners();
+    addOptionClickHandlers() {
+        const options = document.querySelectorAll('.initiative-option');
+        options.forEach(option => {
+            option.addEventListener('click', () => {
+                const optionValue = option.dataset.option;
+                if (option.classList.contains('selected')) {
+                    option.classList.remove('selected');
+                    this.selectedOptions.delete(optionValue);
+                } else {
+                    const question = this.questions[this.currentIndex];
+                    const maxCount = question.validation_rules?.max_count || Infinity;
+                    
+                    if (this.selectedOptions.size < maxCount) {
+                        option.classList.add('selected');
+                        this.selectedOptions.add(optionValue);
+                    }
+                }
+                this.updateSelectedCount();
+                this.validateCurrentAnswer();
+            });
+        });
     }
 
-    setupEventListeners() {
-        const prevBtn = document.getElementById('prev-btn');
-        const nextBtn = document.getElementById('next-btn');
-        const submitBtn = document.getElementById('submit-btn');
-
-        if (prevBtn) prevBtn.onclick = () => this.previousQuestion();
-        if (nextBtn) nextBtn.onclick = () => this.nextQuestion();
-        if (submitBtn) submitBtn.onclick = () => this.submitQuestionnaire();
+    updateSelectedCount() {
+        const question = this.questions[this.currentIndex];
+        const countElement = document.getElementById('selected-count');
+        if (countElement && question.validation_rules) {
+            const { min_count, max_count } = question.validation_rules;
+            const currentCount = this.selectedOptions.size;
+            countElement.textContent = `Selected ${currentCount} of ${min_count}-${max_count} required options`;
+        }
     }
 
     async validateCurrentAnswer() {
         const question = this.questions[this.currentIndex];
         if (!question) return false;
 
-        const answer = this.getAnswer();
+        const answer = Array.from(this.selectedOptions);
         
-        if (!answer && !question.required) {
-            this.validationErrors.delete(question.id);
-            return true;
-        }
-
         try {
             const response = await fetch('/api/submit-answer', {
                 method: 'POST',
@@ -186,12 +160,10 @@ class Questionnaire {
                     return true;
                 } else {
                     this.validationErrors.set(question.id, result.message);
+                    this.showValidationError(question.id);
                 }
-            } else {
-                this.validationErrors.set(question.id, result.message);
             }
             
-            this.showValidationError(question.id);
             return false;
         } catch (error) {
             console.error('Error validating answer:', error);
@@ -201,36 +173,47 @@ class Questionnaire {
     }
 
     showValidationError(questionId) {
-        const container = document.getElementById('questions-container');
-        if (!container) return;
-
-        const input = container.querySelector('textarea, input:checked');
-        const feedback = container.querySelector('.invalid-feedback');
-        
-        if (input) {
-            input.classList.add('is-invalid');
-        }
+        const message = this.validationErrors.get(questionId);
+        const feedback = document.getElementById('validation-message');
         if (feedback) {
-            feedback.textContent = this.validationErrors.get(questionId);
+            feedback.textContent = message;
             feedback.style.display = 'block';
         }
     }
 
-    getAnswer() {
-        const question = this.questions[this.currentIndex];
-        if (!question) return null;
+    showControls() {
+        const controls = document.getElementById('navigation-controls');
+        const prevBtn = document.getElementById('prev-btn');
+        const nextBtn = document.getElementById('next-btn');
+        const submitBtn = document.getElementById('submit-btn');
 
-        if (question.type === 'multiple_choice') {
-            const selected = document.querySelector('input[name="answer"]:checked');
-            return selected ? selected.value : null;
-        } else {
-            const textarea = document.querySelector('textarea');
-            return textarea ? textarea.value.trim() : '';
-        }
+        if (!controls || !prevBtn || !nextBtn || !submitBtn) return;
+
+        controls.classList.remove('d-none');
+        prevBtn.disabled = this.currentIndex === 0;
+        nextBtn.classList.toggle('d-none', this.currentIndex === this.questions.length - 1);
+        submitBtn.classList.toggle('d-none', this.currentIndex !== this.questions.length - 1);
+
+        this.setupEventListeners();
+    }
+
+    setupEventListeners() {
+        const prevBtn = document.getElementById('prev-btn');
+        const nextBtn = document.getElementById('next-btn');
+        const submitBtn = document.getElementById('submit-btn');
+
+        if (prevBtn) prevBtn.onclick = () => this.previousQuestion();
+        if (nextBtn) nextBtn.onclick = () => this.nextQuestion();
+        if (submitBtn) submitBtn.onclick = () => this.submitQuestionnaire();
     }
 
     async previousQuestion() {
         if (this.currentIndex > 0) {
+            this.selectedOptions.clear();
+            const previousAnswer = this.answers.get(this.questions[this.currentIndex - 1].id);
+            if (Array.isArray(previousAnswer)) {
+                previousAnswer.forEach(option => this.selectedOptions.add(option));
+            }
             this.currentIndex--;
             this.renderQuestion();
             this.showControls();
@@ -239,6 +222,11 @@ class Questionnaire {
 
     async nextQuestion() {
         if (await this.validateCurrentAnswer()) {
+            this.selectedOptions.clear();
+            const nextAnswer = this.answers.get(this.questions[this.currentIndex + 1]?.id);
+            if (Array.isArray(nextAnswer)) {
+                nextAnswer.forEach(option => this.selectedOptions.add(option));
+            }
             this.currentIndex++;
             this.renderQuestion();
             this.showControls();
@@ -247,28 +235,18 @@ class Questionnaire {
 
     updateProgress(progress) {
         const progressBar = document.querySelector('.progress-bar');
-        if (!progressBar) {
-            console.error('Progress bar not found');
-            return;
-        }
+        if (!progressBar) return;
 
         if (progress === undefined) {
-            // Fetch progress from server
             fetch('/api/progress')
-                .then(response => {
-                    if (!response.ok) throw new Error('Failed to fetch progress');
-                    return response.json();
-                })
+                .then(response => response.json())
                 .then(data => {
-                    if (data.error) {
-                        throw new Error(data.error);
+                    if (!data.error) {
+                        progressBar.style.width = `${data.progress}%`;
+                        progressBar.setAttribute('aria-valuenow', data.progress);
                     }
-                    progressBar.style.width = `${data.progress}%`;
-                    progressBar.setAttribute('aria-valuenow', data.progress);
                 })
-                .catch(error => {
-                    console.error('Error updating progress:', error);
-                });
+                .catch(error => console.error('Error updating progress:', error));
         } else {
             progressBar.style.width = `${progress}%`;
             progressBar.setAttribute('aria-valuenow', progress);
@@ -279,7 +257,6 @@ class Questionnaire {
         const container = document.getElementById('questionnaire-container');
         if (!container) return;
 
-        // Remove any existing error messages
         const existingErrors = container.querySelectorAll('.alert');
         existingErrors.forEach(error => error.remove());
 

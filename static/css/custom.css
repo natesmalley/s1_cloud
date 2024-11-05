@@ -27,3 +27,52 @@
 .question-container {
     min-height: 200px;
 }
+
+.initiative-option {
+    border: 1px solid var(--bs-gray-700);
+    border-radius: 8px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.initiative-option:hover {
+    border-color: var(--bs-primary);
+    background-color: rgba(var(--bs-primary-rgb), 0.1);
+}
+
+.initiative-option.selected {
+    border-color: var(--bs-primary);
+    background-color: rgba(var(--bs-primary-rgb), 0.1);
+}
+
+.initiative-icon {
+    width: 24px;
+    height: 24px;
+    margin-right: 1rem;
+    color: var(--bs-primary);
+}
+
+.initiative-description {
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+    color: var(--bs-gray-400);
+}
+
+.initiative-header {
+    display: flex;
+    align-items: center;
+}
+
+.initiative-title {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 500;
+}
+
+.selected-count {
+    margin-top: 1rem;
+    font-size: 0.9rem;
+    color: var(--bs-gray-400);
+}

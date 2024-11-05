@@ -15,9 +15,9 @@ class Question(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     text = db.Column(db.String(500), nullable=False)
     question_type = db.Column(db.String(50), nullable=False)
-    options = db.Column(db.JSON)
+    options = db.Column(db.JSON)  # Will store structured options with title, description, and icon
     required = db.Column(db.Boolean, default=True, nullable=False)
-    validation_rules = db.Column(db.JSON)
+    validation_rules = db.Column(db.JSON)  # Will store min_count and max_count for multiple selections
     parent_question_id = db.Column(db.Integer, db.ForeignKey('question.id'), nullable=True)
     parent_answer = db.Column(db.String(500), nullable=True)
     order = db.Column(db.Integer, default=0)
@@ -26,7 +26,7 @@ class Response(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     question_id = db.Column(db.Integer, db.ForeignKey('question.id'), nullable=False)
-    answer = db.Column(db.Text, nullable=False)
+    answer = db.Column(db.JSON, nullable=False)  # Changed to JSON to store multiple selections
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     is_valid = db.Column(db.Boolean, default=True)
     validation_message = db.Column(db.String(200))
