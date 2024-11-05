@@ -16,6 +16,35 @@ flask_app = create_app()
 def apply_custom_css():
     st.markdown('''
         <style>
+        /* Custom tooltip styles */
+        .tooltip {
+            position: relative;
+            display: inline-block;
+            cursor: pointer;
+        }
+        
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 300px;
+            background-color: var(--s1-dark-blue);
+            color: white;
+            text-align: left;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid var(--s1-purple);
+            position: absolute;
+            z-index: 1;
+            right: 100%;
+            top: -5px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+        
         /* SentinelOne Colors */
         :root {
             --s1-purple: #5046E4;
@@ -264,9 +293,18 @@ def main():
     col1, col2 = st.columns([0.1, 0.9])
     with col1:
         try:
-            st.image('paladin_inPixio.png', width=80)
-        except Exception:
-            st.write("S1")
+            # Fix the file name to include the space
+            st.image('paladin _inPixio.png', width=80)
+        except Exception as e:
+            logger.error(f"Error loading logo: {str(e)}")
+            # Show a placeholder if image fails to load
+            st.markdown('''
+                <div style="width: 80px; height: 80px; background-color: var(--s1-purple); 
+                     border-radius: 8px; display: flex; align-items: center; 
+                     justify-content: center; color: white; font-weight: bold;">
+                    S1
+                </div>
+            ''', unsafe_allow_html=True)
     with col2:
         st.title('Cloud Security Roadmap Guide')
     
