@@ -76,6 +76,15 @@ def validate_setup_form(recorder_name, recorder_email, customer_company,
 def show_setup():
     st.header('Setup Information')
     
+    # Verify user exists before showing form
+    with flask_app.app_context():
+        user = User.query.filter_by(id=st.session_state.user_id).first()
+        if not user:
+            st.error("User session expired. Please sign in again.")
+            st.session_state.authenticated = False
+            st.rerun()
+            return
+    
     with st.form("setup_form"):
         st.subheader("Recorder Information")
         recorder_name = st.text_input("Name *", key="recorder_name")
@@ -98,7 +107,7 @@ def show_setup():
             if is_valid:
                 with flask_app.app_context():
                     try:
-                        user = User.query.get(st.session_state.user_id)
+                        user = User.query.filter_by(id=st.session_state.user_id).first()
                         if user:
                             user.recorder_name = recorder_name
                             user.recorder_email = recorder_email
@@ -135,7 +144,15 @@ def calculate_progress():
                 is_valid=True
             ).count()
             
-            return (answered_questions / total_questions) * 100
+            progress = (answered_questions / total_questions) * 100
+            
+            # Update user's progress
+            user = User.query.filter_by(id=st.session_state.user_id).first()
+            if user:
+                user.progress_percentage = progress
+                db.session.commit()
+                
+            return progress
         except Exception as e:
             logger.error(f"Error calculating progress: {str(e)}")
             return 0
@@ -158,7 +175,7 @@ def save_answer(selected_initiatives):
                 return False, validation_message
 
             # Verify user exists
-            user = User.query.get(st.session_state.user_id)
+            user = User.query.filter_by(id=st.session_state.user_id).first()
             if not user:
                 return False, "User not found"
 
@@ -246,8 +263,12 @@ def show_questionnaire():
                 user_id=st.session_state.user_id,
                 question_id=1
             ).first()
-            saved_initiatives = json.loads(response.answer) if response else []
-        except Exception:
+            if response and response.answer:
+                saved_initiatives = json.loads(response.answer)
+            else:
+                saved_initiatives = []
+        except Exception as e:
+            logger.error(f"Error loading saved initiatives: {str(e)}")
             saved_initiatives = []
 
     for initiative in initiatives:
@@ -257,10 +278,11 @@ def show_questionnaire():
         col1, col2 = st.columns([0.1, 0.9])
         with col1:
             if st.checkbox(
-                label="",
+                label=initiative['title'],  # Use actual title instead of empty string
                 value=is_selected,
                 disabled=is_disabled,
-                key=f"cb_{initiative['title']}"
+                key=f"cb_{initiative['title']}",
+                label_visibility="collapsed"  # Hide label but keep it for accessibility
             ):
                 selected_initiatives.append(initiative['title'])
         with col2:
@@ -299,6 +321,13 @@ def show_questionnaire():
 def main():
     apply_custom_css()
     
+    # Initialize database tables at startup
+    with flask_app.app_context():
+        try:
+            db.create_all()
+        except Exception as e:
+            logger.error(f"Error initializing database: {str(e)}")
+    
     col1, col2 = st.columns([0.1, 0.9])
     with col1:
         try:
@@ -313,14 +342,25 @@ def main():
         
     if not st.session_state.authenticated:
         if st.button('Sign in with Google'):
-            st.session_state.authenticated = True
-            st.session_state.user_id = 1  # For testing
-            st.rerun()
+            with flask_app.app_context():
+                # Create or get user
+                user = User.query.filter_by(email="test@example.com").first()
+                if not user:
+                    user = User(
+                        username="Test User",
+                        email="test@example.com"
+                    )
+                    db.session.add(user)
+                    db.session.commit()
+                
+                st.session_state.authenticated = True
+                st.session_state.user_id = user.id
+                st.rerun()
     else:
         # Check if setup is completed
         if 'setup_completed' not in st.session_state:
             with flask_app.app_context():
-                user = User.query.get(st.session_state.user_id)
+                user = User.query.filter_by(id=st.session_state.user_id).first()
                 st.session_state.setup_completed = user.setup_completed if user else False
         
         if not st.session_state.setup_completed:
