@@ -14,44 +14,57 @@ class Questionnaire {
                 fetch('/api/saved-answers')
             ]);
             
-            if (!questionsResponse.ok || !answersResponse.ok) {
-                throw new Error('Failed to fetch questionnaire data');
+            if (!questionsResponse.ok) {
+                throw new Error(`Failed to fetch questions: ${questionsResponse.statusText}`);
+            }
+            if (!answersResponse.ok) {
+                throw new Error(`Failed to fetch answers: ${answersResponse.statusText}`);
             }
             
-            this.questions = await questionsResponse.json();
+            const questionsData = await questionsResponse.json();
             const savedAnswers = await answersResponse.json();
             
-            if (!Array.isArray(this.questions)) {
-                throw new Error('Invalid questions data received');
-            }
-
-            if (this.questions.error) {
-                throw new Error(this.questions.error);
+            // Validate questions data
+            if (!Array.isArray(questionsData) || questionsData.length === 0) {
+                throw new Error('No questions available');
             }
             
+            this.questions = questionsData;
+            
             // Initialize answers map with saved answers
-            savedAnswers.forEach(answer => {
-                this.answers.set(answer.question_id, answer.answer);
-            });
+            if (Array.isArray(savedAnswers)) {
+                savedAnswers.forEach(answer => {
+                    this.answers.set(answer.question_id, answer.answer);
+                });
+            }
             
             this.renderQuestion();
             this.showControls();
             this.updateProgress();
         } catch (error) {
             console.error('Error loading questionnaire:', error);
-            this.showError('Failed to load questionnaire. Please refresh the page.');
+            this.showError(error.message || 'Failed to load questionnaire. Please refresh the page.');
         }
     }
 
     renderQuestion() {
         const container = document.getElementById('questions-container');
-        const question = this.questions[this.currentIndex];
-        
-        if (!question) {
-            this.showError('Failed to load question. Please refresh the page.');
+        if (!container) {
+            console.error('Questions container not found');
             return;
         }
-
+        
+        if (!Array.isArray(this.questions) || !this.questions.length) {
+            this.showError('No questions available. Please refresh the page.');
+            return;
+        }
+        
+        const question = this.questions[this.currentIndex];
+        if (!question || !question.type) {
+            this.showError('Invalid question format. Please refresh the page.');
+            return;
+        }
+        
         container.innerHTML = `
             <div class="card mb-4">
                 <div class="card-body">
@@ -70,29 +83,35 @@ class Questionnaire {
         // Add event listeners for real-time validation
         if (question.type === 'text') {
             const textarea = container.querySelector('textarea');
-            textarea?.addEventListener('input', () => this.validateCurrentAnswer());
+            if (textarea) {
+                textarea.addEventListener('input', () => this.validateCurrentAnswer());
+            }
         } else {
             const inputs = container.querySelectorAll('input[type="radio"]');
             inputs.forEach(input => {
-                input?.addEventListener('change', () => this.validateCurrentAnswer());
+                if (input) {
+                    input.addEventListener('change', () => this.validateCurrentAnswer());
+                }
             });
         }
     }
 
     renderQuestionInput(question) {
+        if (!question) return '';
+        
         const savedAnswer = this.answers.get(question.id);
         const isInvalid = this.validationErrors.has(question.id);
         
         switch (question.type) {
             case 'multiple_choice':
-                return question.options.map(option => `
+                return question.options ? question.options.map(option => `
                     <div class="form-check">
                         <input class="form-check-input ${isInvalid ? 'is-invalid' : ''}"
                             type="radio" name="answer" value="${option}"
                             ${savedAnswer === option ? 'checked' : ''}>
                         <label class="form-check-label">${option}</label>
                     </div>
-                `).join('');
+                `).join('') : '';
             case 'text':
                 return `
                     <textarea class="form-control ${isInvalid ? 'is-invalid' : ''}"
@@ -134,6 +153,8 @@ class Questionnaire {
 
     async validateCurrentAnswer() {
         const question = this.questions[this.currentIndex];
+        if (!question) return false;
+
         const answer = this.getAnswer();
         
         if (!answer && !question.required) {
@@ -150,6 +171,10 @@ class Questionnaire {
                     answer: answer
                 })
             });
+
+            if (!response.ok) {
+                throw new Error('Failed to validate answer');
+            }
             
             const result = await response.json();
             
@@ -177,6 +202,8 @@ class Questionnaire {
 
     showValidationError(questionId) {
         const container = document.getElementById('questions-container');
+        if (!container) return;
+
         const input = container.querySelector('textarea, input:checked');
         const feedback = container.querySelector('.invalid-feedback');
         
@@ -191,6 +218,8 @@ class Questionnaire {
 
     getAnswer() {
         const question = this.questions[this.currentIndex];
+        if (!question) return null;
+
         if (question.type === 'multiple_choice') {
             const selected = document.querySelector('input[name="answer"]:checked');
             return selected ? selected.value : null;
@@ -226,11 +255,13 @@ class Questionnaire {
         if (progress === undefined) {
             // Fetch progress from server
             fetch('/api/progress')
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) throw new Error('Failed to fetch progress');
+                    return response.json();
+                })
                 .then(data => {
                     if (data.error) {
-                        console.error('Error fetching progress:', data.error);
-                        return;
+                        throw new Error(data.error);
                     }
                     progressBar.style.width = `${data.progress}%`;
                     progressBar.setAttribute('aria-valuenow', data.progress);
@@ -248,10 +279,14 @@ class Questionnaire {
         const container = document.getElementById('questionnaire-container');
         if (!container) return;
 
+        // Remove any existing error messages
+        const existingErrors = container.querySelectorAll('.alert');
+        existingErrors.forEach(error => error.remove());
+
         const errorDiv = document.createElement('div');
         errorDiv.className = 'alert alert-danger alert-dismissible fade show';
         errorDiv.innerHTML = `
-            ${message}
+            <strong>Error:</strong> ${message}
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         `;
         container.insertBefore(errorDiv, container.firstChild);
