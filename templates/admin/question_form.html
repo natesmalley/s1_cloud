@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card bg-dark">
+                <div class="card-body">
+                    <h2 class="mb-4">{{ 'Edit' if question else 'Add' }} Question</h2>
+                    
+                    <form method="POST">
+                        <div class="mb-3">
+                            <label class="form-label">Strategic Goal</label>
+                            <input type="text" class="form-control" name="strategic_goal" 
+                                   value="{{ question.strategic_goal if question else '' }}" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">CNAPP Area</label>
+                            <input type="text" class="form-control" name="major_cnapp_area"
+                                   value="{{ question.major_cnapp_area if question else '' }}" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Question Text</label>
+                            <textarea class="form-control" name="text" rows="3" required>{{ question.text if question else '' }}</textarea>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Options (comma-separated)</label>
+                            <textarea class="form-control" name="options" rows="3" required>{{ question.options|join(', ') if question and question.options else '' }}</textarea>
+                            <div class="form-text">Enter options separated by commas</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Weight Score</label>
+                            <input type="text" class="form-control" name="weighting_score"
+                                   value="{{ question.weighting_score if question else '' }}" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Display Order</label>
+                            <input type="number" class="form-control" name="order"
+                                   value="{{ question.order if question else 0 }}" required>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('routes.admin_questions') }}" class="btn btn-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-primary">{{ 'Update' if question else 'Add' }} Question</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
