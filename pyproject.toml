@@ -18,5 +18,4 @@ dependencies = [
     "streamlit>=1.39.0",
     "streamlit-oauth>=0.1.14",
     "flask-session>=0.8.0",
-    "sqlalchemy",
 ]

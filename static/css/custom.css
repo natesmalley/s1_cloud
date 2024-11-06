@@ -1,92 +1,58 @@
-:root {
-    --s1-purple: #5046E4;
-    --s1-dark-blue: #1B1B27;
-    --s1-light-gray: #F5F5F7;
-}
-
-/* Update button colors */
-.btn-primary {
-    background-color: var(--s1-purple) !important;
-    border-color: var(--s1-purple) !important;
-}
-
-/* Update progress bar */
-.progress-bar {
-    background-color: var(--s1-purple) !important;
-}
-
-/* Custom styles for questionnaire */
-.initiative-option {
-    padding: 1rem;
-    border: 1px solid var(--bs-gray-700);
-    border-radius: 0.5rem;
-    margin-bottom: 1rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.initiative-option:hover {
-    border-color: var(--s1-purple);
-    background-color: rgba(80, 70, 228, 0.1);
-}
-
-.initiative-option.selected {
-    border-color: var(--s1-purple);
-    background-color: rgba(80, 70, 228, 0.15);
-}
-
-.initiative-header {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    margin-bottom: 0.5rem;
-}
-
-.initiative-icon {
-    width: 24px;
-    height: 24px;
-    color: var(--s1-purple);
-}
-
-.initiative-title {
-    margin: 0;
-    color: var(--bs-light);
-}
-
-.initiative-description {
-    margin: 0;
-    color: var(--bs-gray-400);
-    font-size: 0.9rem;
-}
-
-.validation-feedback {
-    font-size: 0.875rem;
-}
-
-.invalid-feedback {
-    display: none;
-    color: var(--bs-danger);
-}
-
-#validation-message {
-    margin-top: 0.5rem;
-}
-
-/* Navigation controls */
-#navigation-controls {
-    display: flex;
-    gap: 1rem;
-    justify-content: space-between;
-    margin-top: 2rem;
-}
-
-/* Progress bar */
-#progress-container {
-    margin: 2rem 0;
-}
-
+/* Custom styles to complement Bootstrap theme */
 .progress {
     height: 0.5rem;
     background-color: var(--bs-gray-700);
-    border-radius: 1rem;
+}
+
+.progress-bar {
+    background-color: var(--bs-info);
+    transition: width 0.3s ease;
+}
+
+.card {
+    border-color: var(--bs-gray-700);
+}
+
+.form-check-input:checked {
+    background-color: var(--bs-info);
+    border-color: var(--bs-info);
+}
+
+#navigation-controls {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+}
+
+.question-container {
+    min-height: 200px;
+}
+
+.initiatives-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.stCheckbox {
+    margin-right: 1rem;
+}
+
+.stMarkdown {
+    margin-bottom: 0.5rem;
+}
+
+/* Style for disabled checkboxes */
+.stCheckbox:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.navbar-brand img {
+    filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.2));
+    transition: filter 0.3s ease;
+}
+
+.navbar-brand:hover img {
+    filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.4));
 }
