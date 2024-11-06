@@ -6,50 +6,9 @@ from sqlalchemy import text
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def init_questions():
-    """Initialize remaining questions after strategic goals question"""
-    from app import parse_csv_questions
-    try:
-        # Load and add questions from CSV
-        questions_by_goal = parse_csv_questions()
-        order = 2  # Start after strategic goals question
-        
-        for goal, questions in questions_by_goal.items():
-            for q_data in questions:
-                options = [
-                    {
-                        'title': opt.strip(),
-                        'description': '',
-                        'icon': 'check-circle'
-                    } for opt in q_data['options']
-                ]
-                
-                q = Question(
-                    text=q_data['text'],
-                    question_type='multiple_choice',
-                    options=options,
-                    required=True,
-                    validation_rules={'min_count': 1, 'max_count': 1},
-                    parent_question_id=1,  # Strategic goals question ID
-                    parent_answer=goal,
-                    order=order
-                )
-                db.session.add(q)
-                order += 1
-        
-        db.session.commit()
-        logger.info("Additional questions initialized successfully")
-    except Exception as e:
-        logger.error(f"Error initializing additional questions: {e}")
-        db.session.rollback()
-        raise
-
 def clear_and_init_db():
     try:
-        # Drop existing tables and recreate schema
-        db.session.close()
-        db.session.commit()
-        
+        # Drop and recreate schema
         with db.engine.connect() as conn:
             conn.execute(text('DROP SCHEMA public CASCADE;'))
             conn.execute(text('CREATE SCHEMA public;'))
@@ -104,15 +63,54 @@ def clear_and_init_db():
             validation_rules={'min_count': 1, 'max_count': 3},
             order=1
         )
+        
+        # Add and commit the strategic goals question first
         db.session.add(strategic_question)
-        db.session.commit()  # Commit first question separately
+        db.session.commit()
         
-        # Then initialize other questions
-        init_questions()
+        logger.info("Strategic goals question initialized")
         
-        logger.info("Database initialized successfully!")
+        # Then initialize other questions in batches
+        from app import parse_csv_questions
+        questions_by_goal = parse_csv_questions()
+        order = 2
+        
+        for goal, questions in questions_by_goal.items():
+            for q_data in questions:
+                try:
+                    options = [
+                        {
+                            'title': opt.strip(),
+                            'description': '',
+                            'icon': 'check-circle'
+                        } for opt in q_data['options']
+                    ]
+                    
+                    question = Question(
+                        text=q_data['text'],
+                        question_type='multiple_choice',
+                        options=options,
+                        required=True,
+                        validation_rules={'min_count': 1, 'max_count': 1},
+                        parent_question_id=1,
+                        parent_answer=goal,
+                        order=order
+                    )
+                    db.session.add(question)
+                    order += 1
+                    
+                    # Commit each question individually
+                    db.session.commit()
+                    
+                except Exception as e:
+                    logger.error(f"Error adding question: {str(e)}")
+                    db.session.rollback()
+                    raise
+        
+        logger.info("All questions initialized successfully")
+        
     except Exception as e:
-        logger.error(f"Error initializing database: {e}")
+        logger.error(f"Error in database initialization: {str(e)}")
         db.session.rollback()
         raise
 
