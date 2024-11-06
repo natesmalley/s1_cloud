@@ -14,6 +14,15 @@ logger = logging.getLogger(__name__)
 routes = Blueprint('routes', __name__)
 google_drive = GoogleDriveService()
 
+@routes.after_request
+def add_header(response):
+    if 'static' in request.path:
+        response.cache_control.max_age = 0  # No caching for static files
+        response.cache_control.no_cache = True
+        response.cache_control.no_store = True
+        response.headers['Pragma'] = 'no-cache'
+    return response
+
 def validate_answer(question, answer):
     """Validate answer based on question type and rules"""
     if not answer:
