@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, jsonify, request, redirect, url_for, flash, session
+from flask import Blueprint, render_template, jsonify, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 from extensions import db
 from models import Question, Response, Presentation, User, Setup
@@ -19,7 +19,7 @@ def admin_required(f):
         if not current_user.is_authenticated:
             flash('Please login first.', 'error')
             return redirect(url_for('google_auth.login'))
-        if not current_user.email.endswith('@s1.ai'):
+        if not current_user.email.endswith('@sentinelone.com'):
             flash('Admin access required.', 'error')
             return redirect(url_for('routes.index'))
         return f(*args, **kwargs)
@@ -37,37 +37,6 @@ def check_setup_required():
             flash('Please complete the setup first.', 'info')
             return redirect(url_for('routes.setup'))
     return None
-
-initiatives_list = [
-    {
-        "title": "Cloud Adoption and Business Alignment",
-        "description": "Ensure cloud adoption is in line with the organization's overarching business objectives, providing a secure and compliant foundation for business activities."
-    },
-    {
-        "title": "Achieving Key Business Outcomes",
-        "description": "Drive security practices that directly support business outcomes, ensuring risk mitigation efforts contribute positively to overall business performance."
-    },
-    {
-        "title": "Maximizing ROI for Cloud Security",
-        "description": "Evaluate cloud security investments to maximize return on investment, ensuring that security measures are both effective and financially sustainable."
-    },
-    {
-        "title": "Integration of Cloud Security with Business Strategy",
-        "description": "Integrate cloud security practices within the broader IT and business strategies to ensure cohesive growth, operational efficiency, and security posture."
-    },
-    {
-        "title": "Driving Innovation and Value Delivery",
-        "description": "Facilitate secure innovation by embedding proactive risk management into cloud projects, enabling business opportunities while minimizing risk."
-    },
-    {
-        "title": "Supporting Digital Transformation",
-        "description": "Leverage cloud security to support digital transformation initiatives, ensuring that new technologies and processes are securely adopted."
-    },
-    {
-        "title": "Balancing Rapid Adoption with Compliance",
-        "description": "Achieve a balance between rapidly adopting cloud technologies and maintaining compliance, ensuring security does not hinder business agility."
-    }
-]
 
 @routes.route('/')
 def index():
@@ -134,6 +103,37 @@ def initiatives():
     leader_email = setup.leader_email
     all_setups = Setup.query.filter_by(leader_email=leader_email).all()
     setup_ids = [s.id for s in all_setups]
+    
+    initiatives_list = [
+        {
+            "title": "Cloud Adoption and Business Alignment",
+            "description": "Ensure cloud adoption is in line with the organization's overarching business objectives, providing a secure and compliant foundation for business activities."
+        },
+        {
+            "title": "Achieving Key Business Outcomes",
+            "description": "Drive security practices that directly support business outcomes, ensuring risk mitigation efforts contribute positively to overall business performance."
+        },
+        {
+            "title": "Maximizing ROI for Cloud Security",
+            "description": "Evaluate cloud security investments to maximize return on investment, ensuring that security measures are both effective and financially sustainable."
+        },
+        {
+            "title": "Integration of Cloud Security with Business Strategy",
+            "description": "Integrate cloud security practices within the broader IT and business strategies to ensure cohesive growth, operational efficiency, and security posture."
+        },
+        {
+            "title": "Driving Innovation and Value Delivery",
+            "description": "Facilitate secure innovation by embedding proactive risk management into cloud projects, enabling business opportunities while minimizing risk."
+        },
+        {
+            "title": "Supporting Digital Transformation",
+            "description": "Leverage cloud security to support digital transformation initiatives, ensuring that new technologies and processes are securely adopted."
+        },
+        {
+            "title": "Balancing Rapid Adoption with Compliance",
+            "description": "Achieve a balance between rapidly adopting cloud technologies and maintaining compliance, ensuring security does not hinder business agility."
+        }
+    ]
     
     try:
         response = Response.query.filter(
@@ -642,3 +642,61 @@ def admin_delete_initiative(title):
     except Exception as e:
         flash(f'Error deleting initiative: {str(e)}', 'error')
     return redirect(url_for('routes.admin_initiatives'))
+
+@routes.route('/admin/questions')
+@admin_required
+def admin_questions():
+    questions = Question.query.order_by(Question.strategic_goal, Question.order).all()
+    return render_template('admin/questions.html', questions=questions)
+
+@routes.route('/admin/questions/add', methods=['GET', 'POST'])
+@admin_required
+def admin_add_question():
+    if request.method == 'POST':
+        try:
+            question = Question(
+                strategic_goal=request.form['strategic_goal'],
+                major_cnapp_area=request.form['major_cnapp_area'],
+                text=request.form['text'],
+                options=request.form['options'].split(','),
+                weighting_score=request.form['weighting_score'],
+                order=int(request.form['order'])
+            )
+            db.session.add(question)
+            db.session.commit()
+            flash('Question added successfully!', 'success')
+            return redirect(url_for('routes.admin_questions'))
+        except Exception as e:
+            flash(f'Error adding question: {str(e)}', 'error')
+    return render_template('admin/question_form.html')
+
+@routes.route('/admin/questions/edit/<int:question_id>', methods=['GET', 'POST'])
+@admin_required
+def admin_edit_question(question_id):
+    question = Question.query.get_or_404(question_id)
+    if request.method == 'POST':
+        try:
+            question.strategic_goal = request.form['strategic_goal']
+            question.major_cnapp_area = request.form['major_cnapp_area']
+            question.text = request.form['text']
+            question.options = request.form['options'].split(',')
+            question.weighting_score = request.form['weighting_score']
+            question.order = int(request.form['order'])
+            db.session.commit()
+            flash('Question updated successfully!', 'success')
+            return redirect(url_for('routes.admin_questions'))
+        except Exception as e:
+            flash(f'Error updating question: {str(e)}', 'error')
+    return render_template('admin/question_form.html', question=question)
+
+@routes.route('/admin/questions/delete/<int:question_id>', methods=['POST'])
+@admin_required
+def admin_delete_question(question_id):
+    try:
+        question = Question.query.get_or_404(question_id)
+        db.session.delete(question)
+        db.session.commit()
+        flash('Question deleted successfully!', 'success')
+    except Exception as e:
+        flash(f'Error deleting question: {str(e)}', 'error')
+    return redirect(url_for('routes.admin_questions'))
