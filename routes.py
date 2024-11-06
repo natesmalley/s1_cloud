@@ -33,6 +33,11 @@ def index():
 @routes.route('/setup', methods=['GET', 'POST'])
 @login_required
 def setup():
+    # Check if user already has a setup and redirect if needed
+    existing_setup = get_latest_setup(current_user.id)
+    if existing_setup:
+        return redirect(url_for('routes.initiatives'))
+
     if request.method == 'POST':
         try:
             setup_info = Setup(
@@ -113,8 +118,8 @@ def initiatives():
         if not 1 <= len(selected) <= 3:
             flash('Please select between 1 and 3 initiatives.', 'error')
             return render_template('business_initiatives.html', 
-                                initiatives=initiatives,
-                                selected=selected)
+                               initiatives=initiatives,
+                               selected=selected)
         
         try:
             response = Response.query.filter_by(setup_id=setup.id, question_id=1).first()
@@ -140,8 +145,8 @@ def initiatives():
             flash('Failed to save initiatives. Please try again.', 'error')
     
     return render_template('business_initiatives.html', 
-                         initiatives=initiatives,
-                         selected=selected)
+                        initiatives=initiatives,
+                        selected=selected)
 
 @routes.route('/questionnaire')
 @routes.route('/questionnaire/<int:initiative_index>')
@@ -164,26 +169,32 @@ def questionnaire(initiative_index=None):
         if not isinstance(selected_initiatives, list):
             return redirect(url_for('routes.initiatives'))
             
+        # Validate initiative count
+        if not 1 <= len(selected_initiatives) <= 3:
+            flash('Please select between 1 and 3 initiatives.', 'error')
+            return redirect(url_for('routes.initiatives'))
+            
         try:
             index = int(initiative_index or 0)
-            if index < 0 or index >= len(selected_initiatives):
+            # If index is beyond the last initiative, go to roadmap
+            if index >= len(selected_initiatives):
+                return redirect(url_for('routes.generate_roadmap'))
+            # If index is invalid, start from beginning
+            if index < 0:
                 index = 0
         except (TypeError, ValueError):
             index = 0
             
         current_initiative = selected_initiatives[index]
         
-        # Update query to ensure we get all questions for the current initiative
+        # Get questions for current initiative
         questions = {
-            current_initiative: Question.query.filter(
-                Question.strategic_goal == current_initiative
+            current_initiative: Question.query.filter_by(
+                strategic_goal=current_initiative
             ).order_by(Question.order).all()
         }
         
-        if not questions[current_initiative]:
-            logger.error(f"No questions found for initiative: {current_initiative}")
-        
-        # Get saved answers for current setup
+        # Get saved answers
         saved_answers = {}
         answers = Response.query.filter_by(
             setup_id=setup.id,
@@ -311,7 +322,6 @@ def generate_roadmap():
     if not setup:
         return redirect(url_for('routes.setup'))
         
-    # Get initiatives response
     initiatives_response = Response.query.filter_by(
         setup_id=setup.id,
         question_id=1
@@ -349,3 +359,95 @@ def generate_roadmap():
     except Exception as e:
         logger.error(f"Error in generate_roadmap: {str(e)}")
         return redirect(url_for('routes.initiatives'))
+
+@routes.route('/api/generate-assessment', methods=['POST'])
+@login_required
+def generate_assessment():
+    try:
+        setup = get_latest_setup(current_user.id)
+        if not setup:
+            return jsonify({
+                'status': 'error',
+                'message': 'Setup not found'
+            }), 404
+            
+        # Get all responses for the current setup
+        responses = Response.query.filter_by(
+            setup_id=setup.id,
+            is_valid=True
+        ).all()
+        
+        # Organize responses by initiative
+        initiatives_response = next((r for r in responses if r.question_id == 1), None)
+        if not initiatives_response:
+            return jsonify({
+                'status': 'error',
+                'message': 'No initiatives found'
+            }), 404
+            
+        selected_initiatives = json.loads(initiatives_response.answer)
+        
+        # Generate assessment content
+        content = f'''Cloud Security Maturity Assessment
+Generated on: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+Security Advisor: {setup.advisor_name} ({setup.advisor_email})
+Security Leader: {setup.leader_name} ({setup.leader_email})
+Organization: {setup.leader_employer}
+
+Selected Business Initiatives:
+'''
+        
+        for initiative in selected_initiatives:
+            content += f"\n{initiative}\n"
+            questions = Question.query.filter_by(strategic_goal=initiative).order_by(Question.order).all()
+            
+            for question in questions:
+                response = next((r for r in responses if r.question_id == question.id), None)
+                if response:
+                    answer_index = int(json.loads(response.answer))
+                    chosen_answer = question.options[answer_index].strip()
+                    maturity_score = answer_index + 1
+                    
+                    content += f"\nQuestion: {question.text}"
+                    content += f"\nArea: {question.major_cnapp_area}"
+                    content += f"\nResponse: {chosen_answer}"
+                    content += f"\nMaturity Level: {maturity_score}/5\n"
+        
+        # Use Google Drive service to create document
+        drive_service = GoogleDriveService()
+        doc_id = drive_service.create_presentation(
+            credentials=current_user.google_drive_folder,
+            title=f"Cloud Security Maturity Assessment - {setup.leader_employer}",
+            content=content
+        )
+        
+        if not doc_id:
+            logger.error("Failed to create Google Doc - no document ID returned")
+            return jsonify({
+                'status': 'error',
+                'message': 'Unable to create document. Please ensure you have granted the necessary Google Drive permissions.'
+            }), 500
+            
+        doc_url = f"https://docs.google.com/document/d/{doc_id}"
+        
+        # Save presentation record
+        presentation = Presentation(
+            user_id=current_user.id,
+            google_doc_id=doc_id
+        )
+        db.session.add(presentation)
+        db.session.commit()
+        
+        return jsonify({
+            'status': 'success',
+            'doc_url': doc_url
+        })
+        
+    except Exception as e:
+        logger.error(f"Error generating assessment: {str(e)}")
+        db.session.rollback()
+        return jsonify({
+            'status': 'error',
+            'message': 'Unable to generate assessment. Please try again or contact support if the issue persists.'
+        }), 500
