@@ -25,7 +25,9 @@ def admin_required(f):
         admin_emails = [
             'mpsmalls11@gmail.com',
             'Jaldevi72@gmail.com',
-            'm_mcgrail@outlook.com'
+            'm_mcgrail@outlook.com',
+            'sentinelhowie@gmail.com',
+            's1.slappey@gmail.com'
         ]
         
         if not (current_user.email.endswith('@sentinelone.com') or current_user.email in admin_emails):
@@ -370,7 +372,6 @@ def assessment_results():
         return redirect(url_for('routes.setup'))
 
     try:
-        # Get selected initiatives
         initiatives_response = Response.query.filter_by(
             setup_id=setup.id,
             question_id=1
@@ -383,7 +384,6 @@ def assessment_results():
         selected_initiatives = json.loads(initiatives_response.answer)
         results = {}
 
-        # Process each initiative
         for initiative in selected_initiatives:
             questions = Question.query.filter_by(strategic_goal=initiative).all()
             initiative_results = {
@@ -434,6 +434,67 @@ def assessment_results():
 def admin_questions():
     questions = Question.query.order_by(Question.strategic_goal, Question.order).all()
     return render_template('admin/questions.html', questions=questions)
+
+@routes.route('/admin/initiatives')
+@login_required
+@admin_required
+def admin_initiatives():
+    initiatives = Initiative.query.order_by(Initiative.order).all()
+    return render_template('admin/initiatives.html', initiatives=initiatives)
+
+@routes.route('/admin/initiatives/add', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def admin_add_initiative():
+    if request.method == 'POST':
+        try:
+            initiative = Initiative(
+                title=request.form['title'],
+                description=request.form['description'],
+                order=0  # Will be last in order
+            )
+            db.session.add(initiative)
+            db.session.commit()
+            flash('Initiative added successfully!', 'success')
+            return redirect(url_for('routes.admin_initiatives'))
+        except Exception as e:
+            logger.error(f"Error adding initiative: {str(e)}")
+            flash('Error adding initiative', 'error')
+            db.session.rollback()
+    return render_template('admin/initiative_form.html')
+
+@routes.route('/admin/initiatives/<int:initiative_id>/edit', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def admin_edit_initiative(initiative_id):
+    initiative = Initiative.query.get_or_404(initiative_id)
+    if request.method == 'POST':
+        try:
+            initiative.title = request.form['title']
+            initiative.description = request.form['description']
+            db.session.commit()
+            flash('Initiative updated successfully!', 'success')
+            return redirect(url_for('routes.admin_initiatives'))
+        except Exception as e:
+            logger.error(f"Error updating initiative: {str(e)}")
+            flash('Error updating initiative', 'error')
+            db.session.rollback()
+    return render_template('admin/initiative_form.html', initiative=initiative)
+
+@routes.route('/admin/initiatives/<int:initiative_id>/delete', methods=['POST'])
+@login_required
+@admin_required
+def admin_delete_initiative(initiative_id):
+    initiative = Initiative.query.get_or_404(initiative_id)
+    try:
+        db.session.delete(initiative)
+        db.session.commit()
+        flash('Initiative deleted successfully!', 'success')
+    except Exception as e:
+        logger.error(f"Error deleting initiative: {str(e)}")
+        flash('Error deleting initiative', 'error')
+        db.session.rollback()
+    return redirect(url_for('routes.admin_initiatives'))
 
 @routes.route('/admin/questions/add', methods=['GET', 'POST'])
 @login_required
@@ -486,8 +547,8 @@ def admin_edit_question(question_id):
 @login_required
 @admin_required
 def admin_delete_question(question_id):
+    question = Question.query.get_or_404(question_id)
     try:
-        question = Question.query.get_or_404(question_id)
         db.session.delete(question)
         db.session.commit()
         flash('Question deleted successfully!', 'success')
@@ -496,3 +557,8 @@ def admin_delete_question(question_id):
         flash('Error deleting question', 'error')
         db.session.rollback()
     return redirect(url_for('routes.admin_questions'))
+
+@routes.route('/generate-roadmap')
+@login_required
+def generate_roadmap():
+    return render_template('roadmap_generation.html')

@@ -17,8 +17,8 @@ GOOGLE_CLIENT_ID = os.environ["GOOGLE_OAUTH_CLIENT_ID"]
 GOOGLE_CLIENT_SECRET = os.environ["GOOGLE_OAUTH_CLIENT_SECRET"]
 GOOGLE_DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configuration"
 
-# Use exact URL as specified
-REDIRECT_URL = 'https://8767fe56-c668-4fa2-9723-292ada26865d-00-2p1xk2p8ugpyl.kirk.replit.dev/google_login/callback'
+# Updated redirect URL
+REDIRECT_URL = 'https://cloud-security-assessment.replit.app/google_login/callback'
 
 REQUIRED_SCOPES = [
     "openid",
