@@ -144,7 +144,14 @@ def questionnaire():
     if not initiatives_response:
         return redirect(url_for('routes.initiatives'))
     
-    selected_initiatives = json.loads(initiatives_response.answer)
+    try:
+        selected_initiatives = json.loads(initiatives_response.answer)
+        if not isinstance(selected_initiatives, list):
+            # If somehow the data is not a list, redirect to initiatives
+            return redirect(url_for('routes.initiatives'))
+    except (json.JSONDecodeError, TypeError):
+        # If there's any error parsing the JSON, redirect to initiatives
+        return redirect(url_for('routes.initiatives'))
     
     # Get questions for selected initiatives
     questions = {}
@@ -161,8 +168,11 @@ def questionnaire():
     ).all()
     
     for answer in answers:
-        if answer.answer.isdigit():  # Check if it's a questionnaire answer
-            saved_answers[answer.question_id] = int(answer.answer)
+        try:
+            if answer.question_id != 1:  # Skip initiatives answer
+                saved_answers[answer.question_id] = int(answer.answer)
+        except (ValueError, TypeError):
+            continue
     
     # Calculate progress
     progress = calculate_progress()
@@ -274,7 +284,12 @@ def calculate_progress():
         if not initiatives_response:
             return 0
             
-        selected_initiatives = json.loads(initiatives_response.answer)
+        try:
+            selected_initiatives = json.loads(initiatives_response.answer)
+            if not isinstance(selected_initiatives, list):
+                return 0
+        except (json.JSONDecodeError, TypeError):
+            return 0
         
         # Get total questions for selected initiatives
         total_questions = Question.query.filter(
