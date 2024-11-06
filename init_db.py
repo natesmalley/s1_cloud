@@ -37,11 +37,12 @@ def init_questions():
 
 def clear_and_init_db():
     try:
-        # Drop tables in correct order to handle dependencies
-        for table in reversed(db.metadata.sorted_tables):
-            logger.info(f"Dropping table: {table.name}")
-            table.drop(db.engine, checkfirst=True)
-        
+        # Drop all tables in the correct order to handle dependencies
+        db.session.execute('DROP TABLE IF EXISTS response CASCADE')
+        db.session.execute('DROP TABLE IF EXISTS presentation CASCADE')
+        db.session.execute('DROP TABLE IF EXISTS setup CASCADE')
+        db.session.execute('DROP TABLE IF EXISTS users CASCADE')
+        db.session.execute('DROP TABLE IF EXISTS question CASCADE')
         db.session.commit()
         
         # Create fresh tables
