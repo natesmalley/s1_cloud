@@ -43,7 +43,9 @@
             
             <div class="d-flex justify-content-between mt-4">
                 <a href="{{ url_for('routes.initiatives') }}" class="btn btn-secondary">Back to Initiatives</a>
-                <button type="button" class="btn btn-primary" onclick="window.location.href='{{ url_for('routes.generate_roadmap') }}'">Generate Roadmap</button>
+                {% if saved_answers %}
+                    <a href="{{ url_for('routes.generate_roadmap') }}" class="btn btn-primary">Generate Roadmap</a>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -87,6 +89,11 @@ function saveAnswer(questionId, value) {
             progressBar.setAttribute('aria-valuenow', data.progress);
             document.querySelector('.progress-container .text-muted').textContent = 
                 `${Math.round(data.progress)}% Complete`;
+            
+            // Refresh the page to show the Generate Roadmap button if this is the first answer
+            if (!document.querySelector('a[href="{{ url_for('routes.generate_roadmap') }}"]')) {
+                window.location.reload();
+            }
         } else {
             validationElement.textContent = data.message;
         }

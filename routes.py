@@ -173,6 +173,38 @@ def questionnaire():
                          saved_answers=saved_answers,
                          progress=progress)
 
+@routes.route('/generate-roadmap')
+@login_required
+def generate_roadmap():
+    # Get selected initiatives
+    initiatives_response = Response.query.filter_by(
+        user_id=current_user.id,
+        question_id=1
+    ).first()
+    
+    if not initiatives_response:
+        flash('Please select your initiatives first.', 'error')
+        return redirect(url_for('routes.initiatives'))
+    
+    # Get all answers
+    answers = Response.query.filter_by(
+        user_id=current_user.id,
+        is_valid=True
+    ).all()
+    
+    if len(answers) < 2:  # Only initiatives selected, no questions answered
+        flash('Please complete the questionnaire before generating the roadmap.', 'error')
+        return redirect(url_for('routes.questionnaire'))
+    
+    try:
+        # Here we'll implement the actual roadmap generation logic later
+        flash('Roadmap generation coming soon!', 'info')
+        return redirect(url_for('routes.questionnaire'))
+    except Exception as e:
+        logger.error(f"Error generating roadmap: {str(e)}")
+        flash('Failed to generate roadmap. Please try again.', 'error')
+        return redirect(url_for('routes.questionnaire'))
+
 @routes.route('/api/save-answer', methods=['POST'])
 @login_required
 def save_answer():
