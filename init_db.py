@@ -8,16 +8,26 @@ logger = logging.getLogger(__name__)
 
 def clear_and_init_db():
     try:
-        # Drop and recreate schema
+        # Drop and recreate schema with proper sequence handling
         with db.engine.connect() as conn:
-            conn.execute(text('DROP SCHEMA public CASCADE;'))
+            # Disable connections to the database first
+            conn.execute(text('''
+                SELECT pg_terminate_backend(pg_stat_activity.pid)
+                FROM pg_stat_activity
+                WHERE pg_stat_activity.datname = current_database()
+                AND pid <> pg_backend_pid();
+            '''))
+            conn.execute(text('DROP SCHEMA IF EXISTS public CASCADE;'))
             conn.execute(text('CREATE SCHEMA public;'))
+            conn.execute(text('GRANT ALL ON SCHEMA public TO postgres;'))
+            conn.execute(text('GRANT ALL ON SCHEMA public TO public;'))
             conn.commit()
-        
-        # Create fresh tables
+
+        # Create all tables fresh
         db.create_all()
-        
-        # Initialize strategic goals question first
+        db.session.commit()
+
+        # Initialize strategic goals question
         strategic_question = Question(
             text='Please select your top Business Initiatives in Cloud Security',
             question_type='multiple_choice',
@@ -62,27 +72,28 @@ def clear_and_init_db():
             validation_rules={'min_count': 1, 'max_count': 3},
             order=1
         )
-        
-        # Add and commit the strategic goals question first
         db.session.add(strategic_question)
         db.session.commit()
-        
-        # Get the ID of the strategic question for child questions
+
+        # Store strategic ID for child questions
         strategic_id = strategic_question.id
-        
-        # Then initialize other questions
+
+        # Parse and add child questions
         from app import parse_csv_questions
         questions_by_goal = parse_csv_questions()
         order = 2
-        
+
         for goal, questions in questions_by_goal.items():
             for q_data in questions:
                 try:
                     question = Question(
                         text=q_data['text'],
                         question_type='multiple_choice',
-                        options=[{'title': opt.strip(), 'description': '', 'icon': 'check-circle'} 
-                                for opt in q_data['options']],
+                        options=[{
+                            'title': opt.strip(),
+                            'description': '',
+                            'icon': 'check-circle'
+                        } for opt in q_data['options']],
                         required=True,
                         validation_rules={'min_count': 1, 'max_count': 1},
                         parent_question_id=strategic_id,
@@ -91,16 +102,18 @@ def clear_and_init_db():
                     )
                     db.session.add(question)
                     order += 1
-                    db.session.commit()
                 except Exception as e:
                     logger.error(f"Error adding question: {str(e)}")
                     db.session.rollback()
                     raise
-        
-        logger.info("All questions initialized successfully")
-        
+
+            # Commit after each goal's questions
+            db.session.commit()
+
+        logger.info("Database initialized successfully!")
+
     except Exception as e:
-        logger.error(f"Error in database initialization: {str(e)}")
+        logger.error(f"Error initializing database: {str(e)}")
         db.session.rollback()
         raise
 
