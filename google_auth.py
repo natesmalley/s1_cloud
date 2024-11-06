@@ -17,7 +17,7 @@ GOOGLE_CLIENT_SECRET = os.environ["GOOGLE_OAUTH_CLIENT_SECRET"]
 GOOGLE_DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configuration"
 
 # IMPORTANT: DO NOT MODIFY THIS URL - Replit handles port forwarding internally
-REDIRECT_URL = 'https://s1cloud.yourdomain.repl.co/google_login/callback'
+REDIRECT_URL = 'https://8767fe56-c668-4fa2-9723-292ada26865d-00-2p1xk2p8ugpyl.kirk.replit.dev/google_login/callback'
 
 REQUIRED_SCOPES = [
     "openid",
@@ -55,6 +55,8 @@ def login():
 @google_auth.route("/google_login/callback")
 def callback():
     try:
+        logger.info(f"Received callback request: {request.url}")
+        
         # Get authorization code
         code = request.args.get("code")
         if not code:
