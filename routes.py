@@ -219,14 +219,7 @@ def save_answer():
                 'status': 'error',
                 'message': 'Missing required fields'
             }), 400
-            
-        # Validate answer (should be between 0-4 for our 5-point scale)
-        if not isinstance(answer, int) or not 0 <= answer <= 4:
-            return jsonify({
-                'status': 'error',
-                'message': 'Invalid answer value'
-            }), 400
-            
+        
         # Save or update response
         response = Response.query.filter_by(
             user_id=current_user.id,
@@ -264,7 +257,6 @@ def save_answer():
         }), 500
 
 def calculate_progress():
-    """Calculate user's progress through the questionnaire"""
     try:
         # Get selected initiatives
         initiatives_response = Response.query.filter_by(
@@ -282,22 +274,27 @@ def calculate_progress():
         except (json.JSONDecodeError, TypeError):
             return 0
         
-        # Get total questions for selected initiatives
-        total_questions = Question.query.filter(
+        # Get all questions for selected initiatives
+        questions = Question.query.filter(
             Question.strategic_goal.in_(selected_initiatives)
-        ).count()
+        ).all()
         
-        if total_questions == 0:
+        if not questions:
             return 0
+            
+        total_questions = len(questions)
+        question_ids = [q.id for q in questions]
         
-        # Get number of valid answers (excluding initiatives selection)
+        # Get valid answers for these questions
         answered_questions = Response.query.filter(
             Response.user_id == current_user.id,
             Response.is_valid == True,
-            Response.question_id != 1  # Exclude initiatives selection
+            Response.question_id.in_(question_ids)  # Only count answers for selected initiatives
         ).count()
         
-        return (answered_questions / total_questions) * 100
+        # Calculate percentage
+        progress = (answered_questions / total_questions) * 100
+        return min(progress, 100)  # Ensure we don't exceed 100%
         
     except Exception as e:
         logger.error(f"Error calculating progress: {str(e)}")
