@@ -15,11 +15,13 @@ routes = Blueprint('routes', __name__)
 @routes.route('/')
 def index():
     if current_user.is_authenticated:
-        # Check if setup is completed
+        # First check if setup is completed
         setup = Setup.query.filter_by(user_id=current_user.id).first()
         if not setup:
             # Redirect to setup if not completed
             return redirect(url_for('routes.setup'))
+            
+        # Only redirect to initiatives if setup is completed
         return redirect(url_for('routes.initiatives'))
     return render_template('index.html')
 
@@ -55,6 +57,11 @@ def setup():
 @routes.route('/initiatives', methods=['GET', 'POST'])
 @login_required
 def initiatives():
+    # Check if setup is completed
+    setup = Setup.query.filter_by(user_id=current_user.id).first()
+    if not setup:
+        return redirect(url_for('routes.setup'))
+    
     initiatives = [
         {
             'title': 'Cloud Adoption and Business Alignment',
@@ -109,6 +116,11 @@ def initiatives():
 @routes.route('/save-initiatives', methods=['POST'])
 @login_required
 def save_initiatives():
+    # Check if setup is completed
+    setup = Setup.query.filter_by(user_id=current_user.id).first()
+    if not setup:
+        return redirect(url_for('routes.setup'))
+        
     selected = request.form.getlist('selected_initiatives')
     
     if not 1 <= len(selected) <= 3:
@@ -144,6 +156,11 @@ def save_initiatives():
 @routes.route('/questionnaire/<initiative_index>')
 @login_required
 def questionnaire(initiative_index=None):
+    # Check if setup is completed
+    setup = Setup.query.filter_by(user_id=current_user.id).first()
+    if not setup:
+        return redirect(url_for('routes.setup'))
+        
     # Get selected initiatives
     initiatives_response = Response.query.filter_by(
         user_id=current_user.id,
@@ -211,6 +228,14 @@ def questionnaire(initiative_index=None):
 @routes.route('/api/save-answer', methods=['POST'])
 @login_required
 def save_answer():
+    # Check if setup is completed
+    setup = Setup.query.filter_by(user_id=current_user.id).first()
+    if not setup:
+        return jsonify({
+            'status': 'error',
+            'message': 'Setup not completed'
+        }), 403
+        
     try:
         data = request.get_json()
         question_id = data.get('question_id')
@@ -312,6 +337,13 @@ def calculate_progress():
 @routes.route('/api/progress')
 @login_required
 def get_progress():
+    # Check if setup is completed
+    setup = Setup.query.filter_by(user_id=current_user.id).first()
+    if not setup:
+        return jsonify({
+            'error': 'Setup not completed'
+        }), 403
+        
     try:
         progress = calculate_progress()
         return jsonify({
@@ -326,6 +358,12 @@ def get_progress():
 @routes.route('/generate-roadmap')
 @login_required
 def generate_roadmap():
+    # Check if setup is completed
+    setup = Setup.query.filter_by(user_id=current_user.id).first()
+    if not setup:
+        flash('Please complete setup first.', 'error')
+        return redirect(url_for('routes.setup'))
+        
     # Get selected initiatives
     initiatives_response = Response.query.filter_by(
         user_id=current_user.id,
@@ -354,3 +392,78 @@ def generate_roadmap():
         logger.error(f"Error generating roadmap: {str(e)}")
         flash('Failed to generate roadmap. Please try again.', 'error')
         return redirect(url_for('routes.questionnaire', initiative_index=0))
+
+# Admin routes for managing questions
+@routes.route('/admin/questions')
+@login_required
+def admin_questions():
+    questions = Question.query.order_by(Question.strategic_goal, Question.order).all()
+    return render_template('admin/questions.html', questions=questions)
+
+@routes.route('/admin/questions/add', methods=['GET', 'POST'])
+@login_required
+def admin_add_question():
+    if request.method == 'POST':
+        try:
+            options = request.form['options'].split(',')
+            options = [opt.strip() for opt in options if opt.strip()]
+            
+            question = Question(
+                strategic_goal=request.form['strategic_goal'],
+                major_cnapp_area=request.form['major_cnapp_area'],
+                text=request.form['text'],
+                options=options,
+                weighting_score=request.form['weighting_score'],
+                order=int(request.form['order'])
+            )
+            db.session.add(question)
+            db.session.commit()
+            flash('Question added successfully!', 'success')
+            return redirect(url_for('routes.admin_questions'))
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error adding question: {str(e)}")
+            flash('Failed to add question. Please try again.', 'error')
+    
+    return render_template('admin/question_form.html')
+
+@routes.route('/admin/questions/<int:question_id>/edit', methods=['GET', 'POST'])
+@login_required
+def admin_edit_question(question_id):
+    question = Question.query.get_or_404(question_id)
+    
+    if request.method == 'POST':
+        try:
+            options = request.form['options'].split(',')
+            options = [opt.strip() for opt in options if opt.strip()]
+            
+            question.strategic_goal = request.form['strategic_goal']
+            question.major_cnapp_area = request.form['major_cnapp_area']
+            question.text = request.form['text']
+            question.options = options
+            question.weighting_score = request.form['weighting_score']
+            question.order = int(request.form['order'])
+            
+            db.session.commit()
+            flash('Question updated successfully!', 'success')
+            return redirect(url_for('routes.admin_questions'))
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error updating question: {str(e)}")
+            flash('Failed to update question. Please try again.', 'error')
+    
+    return render_template('admin/question_form.html', question=question)
+
+@routes.route('/admin/questions/<int:question_id>/delete', methods=['POST'])
+@login_required
+def admin_delete_question(question_id):
+    question = Question.query.get_or_404(question_id)
+    try:
+        db.session.delete(question)
+        db.session.commit()
+        flash('Question deleted successfully!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error deleting question: {str(e)}")
+        flash('Failed to delete question. Please try again.', 'error')
+    return redirect(url_for('routes.admin_questions'))

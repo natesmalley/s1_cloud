@@ -23,9 +23,19 @@ class Questionnaire {
 
     async initialize() {
         try {
+            const container = document.getElementById('questions-container');
+            if (!container) {
+                console.warn('Questions container not found');
+                return;
+            }
+
             const [questionsResponse, answersResponse] = await Promise.all([
-                fetch('/api/questions'),
-                fetch('/api/saved-answers')
+                fetch('/api/questions').catch(error => {
+                    throw new Error(`Failed to fetch questions: ${error.message}`);
+                }),
+                fetch('/api/saved-answers').catch(error => {
+                    throw new Error(`Failed to fetch saved answers: ${error.message}`);
+                })
             ]);
             
             if (!questionsResponse.ok) {
@@ -38,18 +48,31 @@ class Questionnaire {
             const questionsData = await questionsResponse.json();
             const savedAnswers = await answersResponse.json();
             
-            if (!Array.isArray(questionsData) || questionsData.length === 0) {
-                throw new Error('No questions available');
+            if (!Array.isArray(questionsData)) {
+                throw new Error('Invalid questions data format');
+            }
+            
+            if (questionsData.length === 0) {
+                container.innerHTML = `
+                    <div class="alert alert-info" role="alert">
+                        <i data-feather="info" class="me-2"></i>
+                        No questions available for this section.
+                    </div>
+                `;
+                feather.replace();
+                return;
             }
             
             this.questions = questionsData;
             
             // Initialize answers map with saved answers
-            if (Array.isArray(savedAnswers)) {
+            if (savedAnswers && Array.isArray(savedAnswers)) {
                 savedAnswers.forEach(answer => {
-                    this.answers.set(answer.question_id, answer.answer);
-                    if (Array.isArray(answer.answer)) {
-                        answer.answer.forEach(option => this.selectedOptions.add(option));
+                    if (answer && answer.question_id) {
+                        this.answers.set(answer.question_id, answer.answer);
+                        if (Array.isArray(answer.answer)) {
+                            answer.answer.forEach(option => this.selectedOptions.add(option));
+                        }
                     }
                 });
             }
@@ -60,7 +83,16 @@ class Questionnaire {
             feather.replace();
         } catch (error) {
             console.error('Error loading questionnaire:', error);
-            this.showError(error.message || 'Failed to load questionnaire. Please refresh the page.');
+            const container = document.getElementById('questions-container');
+            if (container) {
+                container.innerHTML = `
+                    <div class="alert alert-danger" role="alert">
+                        <i data-feather="alert-triangle" class="me-2"></i>
+                        ${error.message || 'Failed to load questionnaire. Please refresh the page.'}
+                    </div>
+                `;
+                feather.replace();
+            }
         }
     }
 
@@ -87,7 +119,7 @@ class Questionnaire {
                     <div class="selected-count mt-3 text-muted">
                         Selected ${this.selectedOptions.size} of ${question.validation_rules?.min_count || 1}-${question.validation_rules?.max_count || 3} required options
                     </div>
-                    <div id="validation-message" class="mt-2 text-danger">
+                    <div id="validation_message" class="mt-2 text-danger">
                         ${this.validationErrors.get(question.id) || ''}
                     </div>
                 </div>
@@ -121,7 +153,10 @@ class Questionnaire {
 
     async validateCurrentAnswer() {
         const question = this.questions[this.currentIndex];
-        if (!question) return false;
+        if (!question) {
+            console.warn('No current question found');
+            return false;
+        }
 
         const answer = Array.from(this.selectedOptions);
         
@@ -136,7 +171,7 @@ class Questionnaire {
             });
 
             if (!response.ok) {
-                throw new Error('Failed to validate answer');
+                throw new Error(`Failed to validate answer: ${response.statusText}`);
             }
             
             const result = await response.json();
@@ -148,10 +183,10 @@ class Questionnaire {
                     this.updateProgress(result.progress);
                     return true;
                 } else {
-                    this.validationErrors.set(question.id, result.message);
-                    const feedback = document.getElementById('validation-message');
+                    this.validationErrors.set(question.id, result.message || 'Invalid answer');
+                    const feedback = document.getElementById('validation_message');
                     if (feedback) {
-                        feedback.textContent = result.message;
+                        feedback.textContent = result.message || 'Invalid answer';
                     }
                 }
             }
@@ -159,7 +194,7 @@ class Questionnaire {
             return false;
         } catch (error) {
             console.error('Error validating answer:', error);
-            this.showError('Failed to validate answer. Please try again.');
+            this.showError(error.message || 'Failed to validate answer. Please try again.');
             return false;
         }
     }
