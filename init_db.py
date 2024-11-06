@@ -1,10 +1,50 @@
 from models import Question, User, db
 import logging
 from sqlalchemy import text
+import csv
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def parse_csv_questions():
+    """Parse questions from the CSV file"""
+    try:
+        with open('Pasted-Strategic-Goal-Major-CNAPP-Area-Guided-Questions-Multiple-Choice-Answers-Weighting-Score-Maturity--1730839362295.txt', 'r') as file:
+            csv_reader = csv.reader(file)
+            next(csv_reader)  # Skip header row
+            
+            questions_by_goal = {}
+            current_goal = None
+            
+            for row in csv_reader:
+                # Skip empty or incomplete rows
+                if not row or len(row) < 5:
+                    continue
+                    
+                goal, area, question_text, answers, weighting = row
+                
+                if goal:  # New strategic goal section
+                    current_goal = goal
+                    if current_goal not in questions_by_goal:
+                        questions_by_goal[current_goal] = []
+                
+                if question_text and current_goal:
+                    # Parse multiple choice answers
+                    answer_options = [opt.strip() for opt in answers.split(',')]
+                    
+                    question_data = {
+                        'text': question_text,
+                        'area': area,
+                        'options': answer_options,
+                        'weighting': weighting
+                    }
+                    questions_by_goal[current_goal].append(question_data)
+            
+            return questions_by_goal
+    except Exception as e:
+        logger.error(f"Error parsing CSV questions: {e}")
+        return {}
 
 def clear_and_init_db():
     try:
@@ -83,7 +123,6 @@ def clear_and_init_db():
         strategic_id = strategic_question.id
 
         # Initialize remaining questions
-        from app import parse_csv_questions
         questions_by_goal = parse_csv_questions()
         order = 2
 

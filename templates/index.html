@@ -1,11 +1,23 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="text-center py-5">
-    <h1 class="display-4 mb-4">Hello I'm Oscar A helpful Assistant</h1>
-    <p class="lead mb-4">Lets Customize a Cloud Security roadmap based on your Priorities</p>
-    <a href="{{ url_for('google_auth.login') }}" class="btn btn-primary btn-lg">
-        Sign in with Google
-    </a>
+<div class="container py-5">
+    <div class="text-center">
+        <img src="{{ url_for('static', filename='img/paladin.png') }}" 
+             alt="Cloud Security Guide" 
+             class="mb-4" 
+             style="max-width: 200px;">
+        <h1 class="display-4 mb-4">Cloud Security Roadmap Guide</h1>
+        <p class="lead mb-4">Create a customized security roadmap based on your business priorities</p>
+        {% if not current_user.is_authenticated %}
+            <a href="{{ url_for('google_auth.login') }}" class="btn btn-primary btn-lg">
+                <i class="bi bi-google me-2"></i>Sign in with Google
+            </a>
+        {% else %}
+            <a href="{{ url_for('routes.questionnaire') }}" class="btn btn-primary btn-lg">
+                Continue to Questionnaire
+            </a>
+        {% endif %}
+    </div>
 </div>
 {% endblock %}
