@@ -12,22 +12,18 @@ logger = logging.getLogger(__name__)
 
 routes = Blueprint('routes', __name__)
 
+def get_latest_setup(user_id):
+    return Setup.query.filter_by(user_id=user_id).order_by(Setup.created_at.desc()).first()
+
 @routes.route('/')
 def index():
     if current_user.is_authenticated:
-        setup = Setup.query.filter_by(user_id=current_user.id).first()
-        if not setup:
-            return redirect(url_for('routes.setup'))
-        return redirect(url_for('routes.initiatives'))
+        return redirect(url_for('routes.setup'))
     return render_template('index.html')
 
 @routes.route('/setup', methods=['GET', 'POST'])
 @login_required
 def setup():
-    existing_setup = Setup.query.filter_by(user_id=current_user.id).first()
-    if existing_setup:
-        return redirect(url_for('routes.initiatives'))
-    
     if request.method == 'POST':
         try:
             setup_info = Setup(
@@ -36,7 +32,8 @@ def setup():
                 advisor_email=request.form['advisor_email'],
                 leader_name=request.form['leader_name'],
                 leader_email=request.form['leader_email'],
-                leader_employer=request.form['leader_employer']
+                leader_employer=request.form['leader_employer'],
+                created_at=datetime.utcnow()
             )
             db.session.add(setup_info)
             db.session.commit()
@@ -52,7 +49,7 @@ def setup():
 @routes.route('/initiatives', methods=['GET', 'POST'])
 @login_required
 def initiatives():
-    setup = Setup.query.filter_by(user_id=current_user.id).first()
+    setup = get_latest_setup(current_user.id)
     if not setup:
         return redirect(url_for('routes.setup'))
     
@@ -109,7 +106,7 @@ def initiatives():
 @routes.route('/save-initiatives', methods=['POST'])
 @login_required
 def save_initiatives():
-    setup = Setup.query.filter_by(user_id=current_user.id).first()
+    setup = get_latest_setup(current_user.id)
     if not setup:
         return redirect(url_for('routes.setup'))
         
@@ -148,7 +145,7 @@ def save_initiatives():
 @routes.route('/questionnaire/<initiative_index>')
 @login_required
 def questionnaire(initiative_index=None):
-    setup = Setup.query.filter_by(user_id=current_user.id).first()
+    setup = get_latest_setup(current_user.id)
     if not setup:
         return redirect(url_for('routes.setup'))
         
@@ -213,7 +210,7 @@ def questionnaire(initiative_index=None):
 @routes.route('/api/save-answer', methods=['POST'])
 @login_required
 def save_answer():
-    setup = Setup.query.filter_by(user_id=current_user.id).first()
+    setup = get_latest_setup(current_user.id)
     if not setup:
         return jsonify({
             'status': 'error',
@@ -314,7 +311,7 @@ def calculate_progress():
 @routes.route('/api/progress')
 @login_required
 def get_progress():
-    setup = Setup.query.filter_by(user_id=current_user.id).first()
+    setup = get_latest_setup(current_user.id)
     if not setup:
         return jsonify({
             'error': 'Setup not completed'
@@ -399,7 +396,7 @@ def get_recommendations(gaps):
 @login_required
 def generate_roadmap():
     try:
-        setup = Setup.query.filter_by(user_id=current_user.id).first()
+        setup = get_latest_setup(current_user.id)
         if not setup:
             flash('Please complete setup first.', 'error')
             return redirect(url_for('routes.setup'))
