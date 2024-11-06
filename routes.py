@@ -121,7 +121,6 @@ def save_initiatives():
         
         if response:
             response.answer = json.dumps(selected)
-            response.is_valid = True
         else:
             response = Response(
                 user_id=current_user.id,
@@ -132,7 +131,7 @@ def save_initiatives():
             db.session.add(response)
             
         db.session.commit()
-        return redirect(url_for('routes.questionnaire'))
+        return redirect(url_for('routes.questionnaire', initiative_index=0))
         
     except Exception as e:
         db.session.rollback()
@@ -140,13 +139,9 @@ def save_initiatives():
         return redirect(url_for('routes.initiatives'))
 
 @routes.route('/questionnaire')
+@routes.route('/questionnaire/<initiative_index>')
 @login_required
-def questionnaire():
-    # Check if setup is completed
-    setup = Setup.query.filter_by(user_id=current_user.id).first()
-    if not setup:
-        return redirect(url_for('routes.setup'))
-        
+def questionnaire(initiative_index=None):
     # Get selected initiatives
     initiatives_response = Response.query.filter_by(
         user_id=current_user.id,
@@ -159,41 +154,57 @@ def questionnaire():
     try:
         selected_initiatives = json.loads(initiatives_response.answer)
         if not isinstance(selected_initiatives, list):
-            # If somehow the data is not a list, redirect to initiatives
             return redirect(url_for('routes.initiatives'))
-    except (json.JSONDecodeError, TypeError):
-        # If there's any error parsing the JSON, redirect to initiatives
-        return redirect(url_for('routes.initiatives'))
-    
-    # Get questions for selected initiatives
-    questions = {}
-    for initiative in selected_initiatives:
-        questions[initiative] = Question.query.filter_by(
-            strategic_goal=initiative
-        ).order_by(Question.order).all()
-    
-    # Get saved answers
-    saved_answers = {}
-    answers = Response.query.filter_by(
-        user_id=current_user.id,
-        is_valid=True
-    ).all()
-    
-    for answer in answers:
+            
+        # Convert index to int and validate
         try:
-            if answer.question_id != 1:  # Skip initiatives answer
-                saved_answers[answer.question_id] = int(answer.answer)
-        except (ValueError, TypeError):
-            continue
-    
-    # Calculate progress
-    progress = calculate_progress()
-    
-    return render_template('questionnaire.html',
-                         selected_initiatives=selected_initiatives,
-                         questions=questions,
-                         saved_answers=saved_answers,
-                         progress=progress)
+            index = int(initiative_index or 0)
+            if index < 0 or index >= len(selected_initiatives):
+                index = 0
+        except (TypeError, ValueError):
+            index = 0
+            
+        current_initiative = selected_initiatives[index]
+        
+        # Get questions for current initiative
+        questions = {
+            current_initiative: Question.query.filter_by(
+                strategic_goal=current_initiative
+            ).order_by(Question.order).all()
+        }
+        
+        # Get saved answers
+        saved_answers = {}
+        answers = Response.query.filter_by(
+            user_id=current_user.id,
+            is_valid=True
+        ).all()
+        
+        for answer in answers:
+            try:
+                if answer.question_id != 1:  # Skip initiatives answer
+                    saved_answers[answer.question_id] = int(answer.answer)
+            except (ValueError, TypeError):
+                continue
+        
+        # Calculate navigation URLs
+        prev_url = url_for('routes.initiatives') if index == 0 else url_for('routes.questionnaire', initiative_index=index-1)
+        next_url = url_for('routes.questionnaire', initiative_index=index+1) if index < len(selected_initiatives)-1 else None
+        
+        # Calculate progress
+        progress = calculate_progress()
+        
+        return render_template('questionnaire.html',
+                           current_initiative=current_initiative,
+                           questions=questions,
+                           saved_answers=saved_answers,
+                           progress=progress,
+                           prev_url=prev_url,
+                           next_url=next_url)
+                           
+    except Exception as e:
+        logger.error(f"Error in questionnaire: {str(e)}")
+        return redirect(url_for('routes.initiatives'))
 
 @routes.route('/api/save-answer', methods=['POST'])
 @login_required
@@ -327,13 +338,13 @@ def generate_roadmap():
     
     if len(answers) < 2:  # Only initiatives selected, no questions answered
         flash('Please complete the questionnaire before generating the roadmap.', 'error')
-        return redirect(url_for('routes.questionnaire'))
+        return redirect(url_for('routes.questionnaire', initiative_index=0))
     
     try:
         # Here we'll implement the actual roadmap generation logic later
         flash('Roadmap generation coming soon!', 'info')
-        return redirect(url_for('routes.questionnaire'))
+        return redirect(url_for('routes.questionnaire', initiative_index=0))
     except Exception as e:
         logger.error(f"Error generating roadmap: {str(e)}")
         flash('Failed to generate roadmap. Please try again.', 'error')
-        return redirect(url_for('routes.questionnaire'))
+        return redirect(url_for('routes.questionnaire', initiative_index=0))

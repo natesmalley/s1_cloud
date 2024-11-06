@@ -4,8 +4,6 @@
 <div class="container py-4">
     <div class="row justify-content-center">
         <div class="col-lg-8">
-            <h2 class="mb-4">Strategic Assessment</h2>
-            
             <div class="card bg-dark">
                 <div class="card-body">
                     <h3 class="card-title mb-4">Please select your top Business Initiatives in Cloud Security</h3>
@@ -14,7 +12,7 @@
                     <form method="POST" action="{{ url_for('routes.save_initiatives') }}">
                         <div class="initiatives-list">
                             {% for initiative in initiatives %}
-                            <div class="initiative-item mb-3 p-3 border border-secondary rounded">
+                            <div class="initiative-item">
                                 <div class="d-flex align-items-start">
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox" 

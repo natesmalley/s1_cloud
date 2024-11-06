@@ -6,11 +6,11 @@
         <div class="col-lg-8">
             <h2 class="mb-4">Strategic Assessment</h2>
             
-            {% for initiative in selected_initiatives %}
+            {% if current_initiative %}
             <div class="initiative-section mb-5">
-                <h3 class="mb-4">{{ initiative }}</h3>
+                <h3 class="mb-4">{{ current_initiative }}</h3>
                 
-                {% for question in questions[initiative] %}
+                {% for question in questions[current_initiative] %}
                 <div class="question-card mb-4">
                     <div class="card bg-dark">
                         <div class="card-body">
@@ -39,14 +39,18 @@
                 </div>
                 {% endfor %}
             </div>
-            {% endfor %}
-            
+
             <div class="d-flex justify-content-between mt-4">
-                <a href="{{ url_for('routes.initiatives') }}" class="btn btn-secondary">Back to Initiatives</a>
-                {% if saved_answers %}
-                    <a href="{{ url_for('routes.generate_roadmap') }}" class="btn btn-primary">Generate Roadmap</a>
+                <button type="button" class="btn btn-secondary" onclick="window.location.href='{{ prev_url }}'">
+                    {% if prev_url == url_for('routes.initiatives') %}Previous{% else %}Previous Initiative{% endif %}
+                </button>
+                {% if next_url %}
+                    <button type="button" class="btn btn-primary" onclick="window.location.href='{{ next_url }}'">Next Initiative</button>
+                {% else %}
+                    <button type="button" class="btn btn-primary" onclick="window.location.href='{{ url_for('routes.generate_roadmap') }}'">Generate Roadmap</button>
                 {% endif %}
             </div>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -65,7 +69,9 @@
         </div>
     </div>
 </div>
+{% endblock %}
 
+{% block scripts %}
 <script>
 function saveAnswer(questionId, value) {
     fetch('/api/save-answer', {
@@ -89,11 +95,6 @@ function saveAnswer(questionId, value) {
             progressBar.setAttribute('aria-valuenow', data.progress);
             document.querySelector('.progress-container .text-muted').textContent = 
                 `${Math.round(data.progress)}% Complete`;
-            
-            // Refresh the page to show the Generate Roadmap button if this is the first answer
-            if (!document.querySelector('a[href="{{ url_for('routes.generate_roadmap') }}"]')) {
-                window.location.reload();
-            }
         } else {
             validationElement.textContent = data.message;
         }

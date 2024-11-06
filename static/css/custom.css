@@ -4,6 +4,50 @@
     --s1-purple: #5046E4;
 }
 
+/* Add container height constraints */
+.container-fluid {
+    min-height: 100vh;
+    padding-bottom: 80px; /* Space for fixed bottom elements */
+}
+
+/* Ensure proper scrolling for initiatives list */
+.initiatives-list {
+    max-height: calc(100vh - 300px);
+    overflow-y: auto;
+    padding-right: 10px;
+}
+
+/* Style scrollbar */
+.initiatives-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.initiatives-list::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+
+.initiatives-list::-webkit-scrollbar-thumb {
+    background: var(--s1-purple);
+    border-radius: 4px;
+}
+
+/* Adjust initiative items for better spacing */
+.initiative-item {
+    margin-bottom: 1rem;
+    padding: 1.25rem;
+    background-color: var(--s1-dark-blue);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+/* Ensure text content wraps properly */
+.initiative-item .form-check-label {
+    white-space: normal;
+    word-wrap: break-word;
+}
+
 .progress {
     height: 0.5rem;
     background-color: var(--bs-gray-700);
@@ -49,11 +93,6 @@
 .btn-secondary:hover {
     background-color: rgba(255, 255, 255, 0.1);
     border-color: rgba(255, 255, 255, 0.3);
-}
-
-.initiative-item {
-    transition: all 0.2s ease;
-    background-color: var(--s1-dark-blue);
 }
 
 .initiative-item:hover {
