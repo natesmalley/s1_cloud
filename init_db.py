@@ -10,16 +10,8 @@ def clear_and_init_db():
     try:
         # Drop and recreate schema with proper sequence handling
         with db.engine.connect() as conn:
-            # Disable connections to the database first
-            conn.execute(text('''
-                SELECT pg_terminate_backend(pg_stat_activity.pid)
-                FROM pg_stat_activity
-                WHERE pg_stat_activity.datname = current_database()
-                AND pid <> pg_backend_pid();
-            '''))
             conn.execute(text('DROP SCHEMA IF EXISTS public CASCADE;'))
             conn.execute(text('CREATE SCHEMA public;'))
-            conn.execute(text('GRANT ALL ON SCHEMA public TO postgres;'))
             conn.execute(text('GRANT ALL ON SCHEMA public TO public;'))
             conn.commit()
 

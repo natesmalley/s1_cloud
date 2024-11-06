@@ -93,21 +93,22 @@ def show_strategic_goals():
             st.error("Failed to load strategic goals question")
             return
             
-        # Get existing response
         response = Response.query.filter_by(
             user_id=st.session_state.user_id,
             question_id=1
         ).first()
         
         selected_initiatives = []
-        for option in question.options:
+        for i, option in enumerate(question.options):
+            # Add unique key for each strategic goal option
+            key = f"strategic_goal_{i}"
             # Check if this option was previously selected
             is_selected = False
             if response:
                 saved_answers = json.loads(response.answer)
                 is_selected = option['title'] in saved_answers
                 
-            if st.checkbox(option['title'], value=is_selected, help=option['description']):
+            if st.checkbox(option['title'], value=is_selected, help=option['description'], key=key):
                 selected_initiatives.append(option['title'])
         
         if selected_initiatives:
@@ -148,7 +149,7 @@ def show_questionnaire():
                     Question.parent_answer.in_(selected_goals)
                 ).order_by(Question.order).all()
                 
-                for question in questions:
+                for i, question in enumerate(questions):
                     st.subheader(question.text)
                     response = Response.query.filter_by(
                         user_id=st.session_state.user_id,
@@ -157,11 +158,14 @@ def show_questionnaire():
                     
                     current_answer = json.loads(response.answer) if response and response.answer else []
                     
-                    for option in question.options:
+                    for j, option in enumerate(question.options):
+                        # Add unique key for each option
+                        key = f"q{question.id}_opt{j}"
                         if st.checkbox(
                             option['title'],
                             value=option['title'] in current_answer,
-                            help=option['description']
+                            help=option['description'],
+                            key=key
                         ):
                             if question.id not in [r.question_id for r in Response.query.filter_by(user_id=st.session_state.user_id).all()]:
                                 save_answer([option['title']])
