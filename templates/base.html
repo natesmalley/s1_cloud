@@ -17,9 +17,10 @@
         <div class="container">
             <a class="navbar-brand" href="/">
                 <img src="{{ url_for('static', filename='img/paladin.png') }}" 
-                     alt="Paladin Logo" 
+                     alt="Cloud Security Roadmap Guide" 
                      height="40" 
-                     class="d-inline-block align-text-center me-2">
+                     class="d-inline-block align-text-center me-2"
+                     onerror="this.style.display='none'">
                 Cloud Security Roadmap Guide
             </a>
             {% if current_user.is_authenticated %}
