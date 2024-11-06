@@ -20,14 +20,12 @@ def admin_required(f):
             flash('Please login first.', 'error')
             return redirect(url_for('google_auth.login'))
             
-        # List of allowed admin emails
         admin_emails = [
             'mpsmalls11@gmail.com',
             'Jaldevi72@gmail.com',
             'm_mcgrail@outlook.com'
         ]
         
-        # Check if user's email is in admin list or has sentinelone domain
         if not (current_user.email.endswith('@sentinelone.com') or current_user.email in admin_emails):
             flash('Admin access required.', 'error')
             return redirect(url_for('routes.index'))
@@ -177,93 +175,67 @@ def initiatives():
 @routes.route('/questionnaire/<int:initiative_index>')
 @login_required
 def questionnaire(initiative_index=None):
-    setup_redirect = check_setup_required()
-    if setup_redirect:
-        return setup_redirect
-        
-    setup = get_latest_setup(current_user.id)
-    if not setup:
-        flash('Setup not found', 'error')
-        return redirect(url_for('routes.setup'))
-        
-    initiatives_response = Response.query.filter_by(
-        setup_id=setup.id,
-        question_id=1
-    ).order_by(Response.timestamp.desc()).first()
-    
-    if not initiatives_response:
-        flash('Please select your initiatives first.', 'info')
-        return redirect(url_for('routes.initiatives'))
-    
     try:
+        setup = get_latest_setup(current_user.id)
+        if not setup:
+            flash('Setup not found', 'error')
+            return redirect(url_for('routes.setup'))
+            
+        initiatives_response = Response.query.filter_by(
+            setup_id=setup.id,
+            question_id=1
+        ).first()
+        
+        if not initiatives_response:
+            flash('Please select your initiatives first.', 'info')
+            return redirect(url_for('routes.initiatives'))
+            
         selected_initiatives = json.loads(initiatives_response.answer)
-        if not isinstance(selected_initiatives, list):
-            flash('Invalid initiatives data. Please select again.', 'error')
-            return redirect(url_for('routes.initiatives'))
-            
-        if not 1 <= len(selected_initiatives) <= 3:
-            flash('Please select between 1 and 3 initiatives.', 'error')
-            return redirect(url_for('routes.initiatives'))
-            
-        try:
-            index = int(initiative_index or 0)
-            if index >= len(selected_initiatives):
-                return redirect(url_for('routes.assessment_results'))
-            if index < 0:
-                index = 0
-        except (TypeError, ValueError):
-            index = 0
+        
+        index = initiative_index if initiative_index is not None else 0
+        if index >= len(selected_initiatives):
+            return redirect(url_for('routes.generate_roadmap'))
             
         current_initiative = selected_initiatives[index]
-        questions = {
-            current_initiative: Question.query.filter_by(
-                strategic_goal=current_initiative
-            ).order_by(Question.order).all()
-        }
+        questions = Question.query.filter_by(
+            strategic_goal=current_initiative
+        ).order_by(Question.order).all()
         
-        if not questions[current_initiative]:
+        if not questions:
             flash(f'No questions found for {current_initiative}', 'error')
             return redirect(url_for('routes.initiatives'))
-        
+            
         saved_answers = {}
-        answers = Response.query.filter_by(
+        responses = Response.query.filter_by(
             setup_id=setup.id,
             is_valid=True
         ).all()
         
-        for answer in answers:
-            try:
-                if answer.question_id != 1:
-                    saved_answers[answer.question_id] = json.loads(answer.answer)
-            except (json.JSONDecodeError, TypeError):
-                continue
+        for response in responses:
+            if response.question_id != 1:
+                try:
+                    saved_answers[response.question_id] = json.loads(response.answer)
+                except json.JSONDecodeError:
+                    continue
         
-        prev_url = url_for('routes.initiatives') if index == 0 else url_for('routes.questionnaire', initiative_index=index-1)
-        next_url = url_for('routes.questionnaire', initiative_index=index+1) if index < len(selected_initiatives)-1 else url_for('routes.assessment_results')
+        total_questions = sum(len(Question.query.filter_by(
+            strategic_goal=init
+        ).all()) for init in selected_initiatives)
         
-        total_questions = Question.query.filter(
-            Question.strategic_goal.in_(selected_initiatives)
-        ).count()
-        
-        answered_questions = Response.query.filter(
-            Response.setup_id==setup.id,
-            Response.is_valid==True,
-            Response.question_id != 1
-        ).count()
-        
-        progress = (answered_questions / total_questions * 100) if total_questions > 0 else 0
+        answered = len([r for r in responses if r.question_id != 1])
+        progress = (answered / total_questions * 100) if total_questions > 0 else 0
         
         return render_template('questionnaire.html',
                            current_initiative=current_initiative,
-                           questions=questions,
+                           questions={current_initiative: questions},
                            saved_answers=saved_answers,
                            progress=progress,
-                           prev_url=prev_url,
-                           next_url=next_url)
+                           prev_url=url_for('routes.initiatives') if index == 0 else url_for('routes.questionnaire', initiative_index=index-1),
+                           next_url=url_for('routes.questionnaire', initiative_index=index+1) if index < len(selected_initiatives)-1 else url_for('routes.generate_roadmap'))
                            
     except Exception as e:
-        logger.error(f"Error in questionnaire: {str(e)}")
-        flash('An error occurred. Please try again.', 'error')
+        logger.error(f"Error loading questionnaire: {str(e)}")
+        flash('An error occurred while loading the questionnaire. Please try again.', 'error')
         return redirect(url_for('routes.initiatives'))
 
 @routes.route('/api/save-answer', methods=['POST'])
