@@ -55,7 +55,8 @@ def parse_csv_questions():
 def init_db_tables():
     """Initialize database tables"""
     try:
-        db.create_all()
+        db.drop_all()  # Clear existing tables
+        db.create_all()  # Create fresh tables
         logger.info("Database tables created successfully")
     except Exception as e:
         logger.error(f"Error creating database tables: {e}")
@@ -94,5 +95,5 @@ def create_app():
 if __name__ == '__main__':
     app = create_app()
     with app.app_context():
-        init_db_tables()
-    app.run(host='0.0.0.0', port=8080)
+        init_db_tables()  # Initialize with fresh data
+    app.run(host='0.0.0.0', port=8080)  # Run on port 8080 consistently
