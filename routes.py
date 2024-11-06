@@ -17,10 +17,10 @@ google_drive = GoogleDriveService()
 @routes.after_request
 def add_header(response):
     if 'static' in request.path:
-        response.cache_control.max_age = 0  # No caching for static files
-        response.cache_control.no_cache = True
-        response.cache_control.no_store = True
+        # Ensure proper caching for static files
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
         response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
     return response
 
 def validate_answer(question, answer):
