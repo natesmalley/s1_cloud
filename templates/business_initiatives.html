@@ -9,7 +9,7 @@
                     <h3 class="card-title mb-4">Please select your top Business Initiatives in Cloud Security</h3>
                     <p class="text-muted mb-4">Select 1-3 initiatives that best align with your objectives</p>
                     
-                    <form method="POST" action="{{ url_for('routes.save_initiatives') }}">
+                    <form method="POST" action="{{ url_for('routes.initiatives') }}">
                         <div class="initiatives-list">
                             {% for initiative in initiatives %}
                             <div class="initiative-item">

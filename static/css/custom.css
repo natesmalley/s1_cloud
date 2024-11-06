@@ -12,12 +12,12 @@
 
 /* Ensure proper scrolling for initiatives list */
 .initiatives-list {
-    max-height: calc(100vh - 300px);
+    max-height: calc(65vh - 120px);
     overflow-y: auto;
-    padding-right: 10px;
+    padding-right: 15px;
+    margin: 0 -5px 20px -5px;
 }
 
-/* Style scrollbar */
 .initiatives-list::-webkit-scrollbar {
     width: 8px;
 }
@@ -32,13 +32,17 @@
     border-radius: 4px;
 }
 
+.initiatives-list::-webkit-scrollbar-thumb:hover {
+    background: var(--s1-purple);
+}
+
 /* Adjust initiative items for better spacing */
 .initiative-item {
-    margin-bottom: 1rem;
-    padding: 1.25rem;
-    background-color: var(--s1-dark-blue);
+    background: var(--s1-dark-blue);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
+    padding: 1.25rem;
+    margin: 0 5px 15px 5px;
     transition: all 0.2s ease;
 }
 

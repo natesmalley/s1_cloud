@@ -18,6 +18,15 @@ def get_latest_setup(user_id):
 @routes.route('/')
 def index():
     if current_user.is_authenticated:
+        setup = get_latest_setup(current_user.id)
+        if setup:
+            initiatives_response = Response.query.filter_by(
+                setup_id=setup.id,
+                question_id=1
+            ).first()
+            if initiatives_response:
+                return redirect(url_for('routes.questionnaire', initiative_index=0))
+            return redirect(url_for('routes.initiatives'))
         return redirect(url_for('routes.setup'))
     return render_template('index.html')
 
@@ -55,94 +64,87 @@ def initiatives():
     
     initiatives = [
         {
-            'title': 'Cloud Adoption and Business Alignment',
-            'description': 'Ensure cloud adoption is in line with the organization\'s overarching business objectives, providing a secure and compliant foundation for business activities.'
+            "title": "Cloud Adoption and Business Alignment",
+            "description": "Ensure cloud adoption is in line with the organization's overarching business objectives, providing a secure and compliant foundation for business activities."
         },
         {
-            'title': 'Achieving Key Business Outcomes',
-            'description': 'Drive security practices that directly support business outcomes, ensuring risk mitigation efforts contribute positively to overall business performance.'
+            "title": "Achieving Key Business Outcomes",
+            "description": "Drive security practices that directly support business outcomes, ensuring risk mitigation efforts contribute positively to overall business performance."
         },
         {
-            'title': 'Maximizing ROI for Cloud Security',
-            'description': 'Evaluate cloud security investments to maximize return on investment, ensuring that security measures are both effective and financially sustainable.'
+            "title": "Maximizing ROI for Cloud Security",
+            "description": "Evaluate cloud security investments to maximize return on investment, ensuring that security measures are both effective and financially sustainable."
         },
         {
-            'title': 'Integration of Cloud Security with Business Strategy',
-            'description': 'Integrate cloud security practices within the broader IT and business strategies to ensure cohesive growth, operational efficiency, and security posture.'
+            "title": "Integration of Cloud Security with Business Strategy",
+            "description": "Integrate cloud security practices within the broader IT and business strategies to ensure cohesive growth, operational efficiency, and security posture."
         },
         {
-            'title': 'Driving Innovation and Value Delivery',
-            'description': 'Facilitate secure innovation by embedding proactive risk management into cloud projects, enabling business opportunities while minimizing risk.'
+            "title": "Driving Innovation and Value Delivery",
+            "description": "Facilitate secure innovation by embedding proactive risk management into cloud projects, enabling business opportunities while minimizing risk."
         },
         {
-            'title': 'Supporting Digital Transformation',
-            'description': 'Leverage cloud security to support digital transformation initiatives, ensuring that new technologies and processes are securely adopted.'
+            "title": "Supporting Digital Transformation",
+            "description": "Leverage cloud security to support digital transformation initiatives, ensuring that new technologies and processes are securely adopted."
         },
         {
-            'title': 'Balancing Rapid Adoption with Compliance',
-            'description': 'Achieve a balance between rapidly adopting cloud technologies and maintaining compliance, ensuring security does not hinder business agility.'
+            "title": "Balancing Rapid Adoption with Compliance",
+            "description": "Achieve a balance between rapidly adopting cloud technologies and maintaining compliance, ensuring security does not hinder business agility."
         }
     ]
     
     try:
         response = Response.query.filter_by(setup_id=setup.id, question_id=1).first()
+        selected = []
         if response and response.answer:
             try:
                 selected = json.loads(response.answer)
                 if not isinstance(selected, list):
                     selected = []
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, TypeError):
                 selected = []
-        else:
-            selected = []
     except Exception as e:
         logger.error(f"Error loading selected initiatives: {str(e)}")
         selected = []
+    
+    if request.method == 'POST':
+        selected = request.form.getlist('selected_initiatives')
+        
+        if not 1 <= len(selected) <= 3:
+            flash('Please select between 1 and 3 initiatives.', 'error')
+            return render_template('business_initiatives.html', 
+                                initiatives=initiatives,
+                                selected=selected)
+        
+        try:
+            response = Response.query.filter_by(setup_id=setup.id, question_id=1).first()
+            
+            if response:
+                response.answer = json.dumps(selected)
+                response.is_valid = True
+            else:
+                response = Response(
+                    setup_id=setup.id,
+                    question_id=1,
+                    answer=json.dumps(selected),
+                    is_valid=True
+                )
+                db.session.add(response)
+                
+            db.session.commit()
+            return redirect(url_for('routes.questionnaire', initiative_index=0))
+            
+        except Exception as e:
+            logger.error(f"Error saving initiatives: {str(e)}")
+            db.session.rollback()
+            flash('Failed to save initiatives. Please try again.', 'error')
     
     return render_template('business_initiatives.html', 
                          initiatives=initiatives,
                          selected=selected)
 
-@routes.route('/save-initiatives', methods=['POST'])
-@login_required
-def save_initiatives():
-    setup = get_latest_setup(current_user.id)
-    if not setup:
-        return redirect(url_for('routes.setup'))
-        
-    selected = request.form.getlist('selected_initiatives')
-    
-    if not 1 <= len(selected) <= 3:
-        flash('Please select between 1 and 3 initiatives.', 'error')
-        return redirect(url_for('routes.initiatives'))
-    
-    try:
-        response = Response.query.filter_by(
-            setup_id=setup.id,
-            question_id=1
-        ).first()
-        
-        if response:
-            response.answer = json.dumps(selected)
-        else:
-            response = Response(
-                setup_id=setup.id,
-                question_id=1,
-                answer=json.dumps(selected),
-                is_valid=True
-            )
-            db.session.add(response)
-            
-        db.session.commit()
-        return redirect(url_for('routes.questionnaire', initiative_index=0))
-        
-    except Exception as e:
-        db.session.rollback()
-        flash('Failed to save initiatives. Please try again.', 'error')
-        return redirect(url_for('routes.initiatives'))
-
 @routes.route('/questionnaire')
-@routes.route('/questionnaire/<initiative_index>')
+@routes.route('/questionnaire/<int:initiative_index>')
 @login_required
 def questionnaire(initiative_index=None):
     setup = get_latest_setup(current_user.id)
@@ -171,12 +173,17 @@ def questionnaire(initiative_index=None):
             
         current_initiative = selected_initiatives[index]
         
+        # Update query to ensure we get all questions for the current initiative
         questions = {
-            current_initiative: Question.query.filter_by(
-                strategic_goal=current_initiative
+            current_initiative: Question.query.filter(
+                Question.strategic_goal == current_initiative
             ).order_by(Question.order).all()
         }
         
+        if not questions[current_initiative]:
+            logger.error(f"No questions found for initiative: {current_initiative}")
+        
+        # Get saved answers for current setup
         saved_answers = {}
         answers = Response.query.filter_by(
             setup_id=setup.id,
@@ -185,15 +192,27 @@ def questionnaire(initiative_index=None):
         
         for answer in answers:
             try:
-                if answer.question_id != 1:
-                    saved_answers[answer.question_id] = int(answer.answer)
-            except (ValueError, TypeError):
+                if answer.question_id != 1:  # Skip initiative selection
+                    saved_answers[answer.question_id] = json.loads(answer.answer)
+            except (json.JSONDecodeError, TypeError):
                 continue
         
+        # Update navigation URLs
         prev_url = url_for('routes.initiatives') if index == 0 else url_for('routes.questionnaire', initiative_index=index-1)
-        next_url = url_for('routes.questionnaire', initiative_index=index+1) if index < len(selected_initiatives)-1 else None
+        next_url = url_for('routes.questionnaire', initiative_index=index+1) if index < len(selected_initiatives)-1 else url_for('routes.generate_roadmap')
         
-        progress = calculate_progress(setup.id)
+        # Calculate progress
+        total_questions = Question.query.filter(
+            Question.strategic_goal.in_(selected_initiatives)
+        ).count()
+        
+        answered_questions = Response.query.filter(
+            Response.setup_id == setup.id,
+            Response.is_valid == True,
+            Response.question_id != 1  # Exclude initiative selection
+        ).count()
+        
+        progress = (answered_questions / total_questions * 100) if total_questions > 0 else 0
         
         return render_template('questionnaire.html',
                            current_initiative=current_initiative,
@@ -234,20 +253,43 @@ def save_answer():
         ).first()
         
         if response:
-            response.answer = str(answer)
+            response.answer = json.dumps(answer)
             response.is_valid = True
         else:
             response = Response(
                 setup_id=setup.id,
                 question_id=question_id,
-                answer=str(answer),
+                answer=json.dumps(answer),
                 is_valid=True
             )
             db.session.add(response)
             
         db.session.commit()
         
-        progress = calculate_progress(setup.id)
+        # Calculate updated progress
+        initiatives_response = Response.query.filter_by(
+            setup_id=setup.id,
+            question_id=1
+        ).first()
+        
+        if not initiatives_response:
+            return jsonify({
+                'status': 'error',
+                'message': 'No initiatives selected'
+            }), 400
+            
+        selected_initiatives = json.loads(initiatives_response.answer)
+        total_questions = Question.query.filter(
+            Question.strategic_goal.in_(selected_initiatives)
+        ).count()
+        
+        answered_questions = Response.query.filter(
+            Response.setup_id == setup.id,
+            Response.is_valid == True,
+            Response.question_id != 1
+        ).count()
+        
+        progress = (answered_questions / total_questions * 100) if total_questions > 0 else 0
         
         return jsonify({
             'status': 'success',
@@ -262,247 +304,48 @@ def save_answer():
             'message': 'Failed to save answer'
         }), 500
 
-def calculate_progress(setup_id):
-    try:
-        initiatives_response = Response.query.filter_by(
-            setup_id=setup_id,
-            question_id=1
-        ).first()
-        
-        if not initiatives_response:
-            return 0
-            
-        try:
-            selected_initiatives = json.loads(initiatives_response.answer)
-            if not isinstance(selected_initiatives, list):
-                return 0
-        except (json.JSONDecodeError, TypeError):
-            return 0
-        
-        questions = Question.query.filter(
-            Question.strategic_goal.in_(selected_initiatives)
-        ).all()
-        
-        if not questions:
-            return 0
-            
-        total_questions = len(questions)
-        question_ids = [q.id for q in questions]
-        
-        answered_questions = Response.query.filter(
-            Response.setup_id == setup_id,
-            Response.is_valid == True,
-            Response.question_id.in_(question_ids)
-        ).count()
-        
-        progress = (answered_questions / total_questions) * 100
-        return min(progress, 100)
-        
-    except Exception as e:
-        logger.error(f"Error calculating progress: {str(e)}")
-        return 0
-
-@routes.route('/api/progress')
-@login_required
-def get_progress():
-    setup = get_latest_setup(current_user.id)
-    if not setup:
-        return jsonify({
-            'error': 'Setup not completed'
-        }), 403
-        
-    try:
-        progress = calculate_progress(setup.id)
-        return jsonify({
-            'progress': progress
-        })
-    except Exception as e:
-        logger.error(f"Error getting progress: {str(e)}")
-        return jsonify({
-            'error': 'Failed to get progress'
-        }), 500
-
-def calculate_maturity_score(setup_id, questions):
-    answers = Response.query.filter_by(
-        setup_id=setup_id,
-        is_valid=True
-    ).all()
-    
-    if not answers:
-        return 0
-    
-    total_score = 0
-    max_possible = len(questions) * 4
-    
-    for answer in answers:
-        try:
-            score = int(answer.answer)
-            total_score += score
-        except (ValueError, TypeError):
-            continue
-    
-    if max_possible == 0:
-        return 0
-        
-    return (total_score / max_possible) * 5
-
-def get_strengths_and_gaps(setup_id, questions):
-    answers = Response.query.filter_by(
-        setup_id=setup_id,
-        is_valid=True
-    ).all()
-    
-    strengths = []
-    gaps = []
-    
-    for answer in answers:
-        question = next((q for q in questions if q.id == answer.question_id), None)
-        if not question:
-            continue
-            
-        try:
-            score = int(answer.answer)
-            if score >= 3:
-                strengths.append({
-                    'area': question.major_cnapp_area,
-                    'detail': question.text,
-                    'score': score
-                })
-            elif score <= 1:
-                gaps.append({
-                    'area': question.major_cnapp_area,
-                    'detail': question.text,
-                    'score': score
-                })
-        except (ValueError, TypeError):
-            continue
-            
-    return strengths, gaps
-
-def get_recommendations(gaps):
-    recommendations = []
-    
-    for gap in gaps:
-        if gap['score'] == 0:
-            urgency = "Critical"
-        else:
-            urgency = "Important"
-            
-        recommendations.append({
-            'area': gap['area'],
-            'urgency': urgency,
-            'recommendation': f"Improve {gap['area'].lower()} capabilities by addressing: {gap['detail']}"
-        })
-        
-    return recommendations
-
-@routes.route('/generate-roadmap')
+@routes.route('/generate_roadmap')
 @login_required
 def generate_roadmap():
-    try:
-        setup = get_latest_setup(current_user.id)
-        if not setup:
-            flash('Please complete setup first.', 'error')
-            return redirect(url_for('routes.setup'))
-            
-        initiatives_response = Response.query.filter_by(
-            setup_id=setup.id,
-            question_id=1
-        ).first()
+    setup = get_latest_setup(current_user.id)
+    if not setup:
+        return redirect(url_for('routes.setup'))
         
-        if not initiatives_response:
-            flash('Please select your initiatives first.', 'error')
+    # Get initiatives response
+    initiatives_response = Response.query.filter_by(
+        setup_id=setup.id,
+        question_id=1
+    ).first()
+    
+    if not initiatives_response:
+        return redirect(url_for('routes.initiatives'))
+        
+    try:
+        selected_initiatives = json.loads(initiatives_response.answer)
+        if not isinstance(selected_initiatives, list):
             return redirect(url_for('routes.initiatives'))
             
-        selected_initiatives = json.loads(initiatives_response.answer)
-        
-        content = []
-        
-        content.append("# Cloud Security Maturity Assessment\n\n")
-        content.append(f"Generated on: {datetime.now().strftime('%B %d, %Y')}\n\n")
-        
-        content.append("## Executive Summary\n\n")
-        content.append(f"This assessment was conducted for {setup.leader_employer} ")
-        content.append(f"by {setup.advisor_name} (Security Advisor) ")
-        content.append(f"in collaboration with {setup.leader_name} (Security Leader).\n\n")
-        
-        content.append("## Assessment Details\n\n")
-        content.append("### Stakeholders\n\n")
-        content.append(f"**Security Advisor:**\n- Name: {setup.advisor_name}\n- Email: {setup.advisor_email}\n\n")
-        content.append(f"**Security Leader:**\n- Name: {setup.leader_name}\n- Email: {setup.leader_email}\n")
-        content.append(f"- Organization: {setup.leader_employer}\n\n")
-        
-        total_score = 0
-        total_initiatives = len(selected_initiatives)
-        
-        content.append("## Initiative Analysis\n\n")
-        
+        # Check if all questions are answered
         for initiative in selected_initiatives:
-            content.append(f"### {initiative}\n\n")
+            questions = Question.query.filter_by(
+                strategic_goal=initiative
+            ).all()
             
-            questions = Question.query.filter_by(strategic_goal=initiative).all()
-            
-            maturity_score = calculate_maturity_score(setup.id, questions)
-            total_score += maturity_score
-            
-            content.append(f"**Current Maturity Level:** {maturity_score:.1f}/5.0\n\n")
-            
-            strengths, gaps = get_strengths_and_gaps(setup.id, questions)
-            
-            if strengths:
-                content.append("#### Strengths\n")
-                for strength in strengths:
-                    content.append(f"- {strength['area']}: {strength['detail']}\n")
-                content.append("\n")
+            for question in questions:
+                response = Response.query.filter_by(
+                    setup_id=setup.id,
+                    question_id=question.id,
+                    is_valid=True
+                ).first()
                 
-            if gaps:
-                content.append("#### Areas for Improvement\n")
-                for gap in gaps:
-                    content.append(f"- {gap['area']}: {gap['detail']}\n")
-                content.append("\n")
-                
-            recommendations = get_recommendations(gaps)
-            if recommendations:
-                content.append("#### Recommendations\n")
-                for rec in recommendations:
-                    content.append(f"- [{rec['urgency']}] {rec['recommendation']}\n")
-                content.append("\n")
-                
-        if total_initiatives > 0:
-            avg_maturity = total_score / total_initiatives
-            content.append("## Overall Assessment\n\n")
-            content.append(f"**Average Maturity Score:** {avg_maturity:.1f}/5.0\n\n")
-            
-        document_content = "".join(content)
+                if not response:
+                    # Redirect to the first unanswered initiative
+                    index = selected_initiatives.index(initiative)
+                    return redirect(url_for('routes.questionnaire', initiative_index=index))
         
-        try:
-            drive_service = GoogleDriveService()
-            doc_id = drive_service.create_presentation(
-                current_user.google_drive_folder,
-                f"Cloud Security Roadmap - {setup.leader_employer}",
-                document_content
-            )
-            
-            if doc_id:
-                presentation = Presentation(
-                    user_id=current_user.id,
-                    google_doc_id=doc_id
-                )
-                db.session.add(presentation)
-                db.session.commit()
-                
-                flash('Roadmap generated successfully!', 'success')
-                return redirect(url_for('routes.questionnaire', initiative_index=0))
-            else:
-                flash('Failed to generate roadmap document.', 'error')
-                return redirect(url_for('routes.questionnaire', initiative_index=0))
-                
-        except Exception as e:
-            logger.error(f"Error generating roadmap document: {str(e)}")
-            flash('Failed to generate roadmap. Please try again.', 'error')
-            return redirect(url_for('routes.questionnaire', initiative_index=0))
-            
+        # If all questions are answered, show the roadmap generation page
+        return render_template('roadmap_generation.html')
+        
     except Exception as e:
-        logger.error(f"Error generating roadmap: {str(e)}")
-        flash('An error occurred while generating the roadmap.', 'error')
-        return redirect(url_for('routes.questionnaire', initiative_index=0))
+        logger.error(f"Error in generate_roadmap: {str(e)}")
+        return redirect(url_for('routes.initiatives'))
