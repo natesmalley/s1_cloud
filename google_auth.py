@@ -201,7 +201,12 @@ def callback():
         if not user:
             user = User(username=users_name, email=users_email)
             db.session.add(user)
-            db.session.commit()
+
+        # Save OAuth credentials
+        token_data = token_response.json()
+        user.credentials = token_data.get('access_token')
+        db.session.commit()
+        logger.info(f"Saved OAuth credentials for user: {users_email}")
 
         login_user(user)
         next_page = request.args.get('next')

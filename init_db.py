@@ -46,7 +46,7 @@ def init_questions():
 
 def clear_and_init_db():
     try:
-        # Drop all tables in the correct order to handle dependencies
+        # Drop all tables in the correct order
         logger.info("Dropping existing tables...")
         db.session.execute(text('DROP TABLE IF EXISTS response CASCADE'))
         db.session.execute(text('DROP TABLE IF EXISTS presentation CASCADE'))
@@ -56,16 +56,10 @@ def clear_and_init_db():
         db.session.commit()
         logger.info("All tables dropped successfully")
         
-        # Create fresh tables in the correct order
+        # Create fresh tables
         logger.info("Creating tables...")
         db.create_all()
         logger.info("Tables created successfully")
-        
-        # Verify users table exists
-        result = db.session.execute(text("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'users')"))
-        if not result.scalar():
-            raise Exception("Users table was not created properly")
-        logger.info("Users table verified")
         
         # Initialize questions
         logger.info("Initializing questions...")

@@ -8,7 +8,7 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(64), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256))
-    google_drive_folder = db.Column(db.String(256))
+    credentials = db.Column(db.String(2048))  # Store OAuth credentials
     last_question_id = db.Column(db.Integer, db.ForeignKey('question.id'), nullable=True)
     progress_percentage = db.Column(db.Float, default=0.0)
 
