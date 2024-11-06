@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, jsonify, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 from extensions import db
-from models import Question, Response, Presentation, User, Setup
+from models import Question, Response, Presentation, User, Setup, Initiative
 from google_drive import GoogleDriveService
 from functools import wraps
 import json
@@ -43,11 +43,9 @@ def index():
     if current_user.is_authenticated:
         setup = get_latest_setup(current_user.id)
         if setup:
-            all_setups = Setup.query.filter_by(leader_email=setup.leader_email).all()
-            setup_ids = [s.id for s in all_setups]
-            initiatives_response = Response.query.filter(
-                Response.setup_id.in_(setup_ids),
-                Response.question_id == 1
+            initiatives_response = Response.query.filter_by(
+                setup_id=setup.id,
+                question_id=1
             ).order_by(Response.timestamp.desc()).first()
             
             if initiatives_response:
@@ -100,45 +98,16 @@ def initiatives():
         return setup_redirect
     
     setup = get_latest_setup(current_user.id)
-    leader_email = setup.leader_email
-    all_setups = Setup.query.filter_by(leader_email=leader_email).all()
-    setup_ids = [s.id for s in all_setups]
-    
-    initiatives_list = [
-        {
-            "title": "Cloud Adoption and Business Alignment",
-            "description": "Ensure cloud adoption is in line with the organization's overarching business objectives, providing a secure and compliant foundation for business activities."
-        },
-        {
-            "title": "Achieving Key Business Outcomes",
-            "description": "Drive security practices that directly support business outcomes, ensuring risk mitigation efforts contribute positively to overall business performance."
-        },
-        {
-            "title": "Maximizing ROI for Cloud Security",
-            "description": "Evaluate cloud security investments to maximize return on investment, ensuring that security measures are both effective and financially sustainable."
-        },
-        {
-            "title": "Integration of Cloud Security with Business Strategy",
-            "description": "Integrate cloud security practices within the broader IT and business strategies to ensure cohesive growth, operational efficiency, and security posture."
-        },
-        {
-            "title": "Driving Innovation and Value Delivery",
-            "description": "Facilitate secure innovation by embedding proactive risk management into cloud projects, enabling business opportunities while minimizing risk."
-        },
-        {
-            "title": "Supporting Digital Transformation",
-            "description": "Leverage cloud security to support digital transformation initiatives, ensuring that new technologies and processes are securely adopted."
-        },
-        {
-            "title": "Balancing Rapid Adoption with Compliance",
-            "description": "Achieve a balance between rapidly adopting cloud technologies and maintaining compliance, ensuring security does not hinder business agility."
-        }
-    ]
     
     try:
-        response = Response.query.filter(
-            Response.setup_id.in_(setup_ids),
-            Response.question_id == 1
+        initiatives = Initiative.query.order_by(Initiative.order).all()
+        if not initiatives:
+            flash('No initiatives available. Please contact an administrator.', 'error')
+            return redirect(url_for('routes.index'))
+            
+        response = Response.query.filter_by(
+            setup_id=setup.id,
+            question_id=1
         ).order_by(Response.timestamp.desc()).first()
         
         selected = []
@@ -149,49 +118,51 @@ def initiatives():
                     selected = []
             except (json.JSONDecodeError, TypeError):
                 selected = []
-    except Exception as e:
-        logger.error(f"Error loading selected initiatives: {str(e)}")
-        selected = []
-    
-    if request.method == 'POST':
-        selected = request.form.getlist('selected_initiatives')
-        
-        if not 1 <= len(selected) <= 3:
-            flash('Please select between 1 and 3 initiatives.', 'error')
-            return render_template('business_initiatives.html', 
-                               initiatives=initiatives_list,
-                               selected=selected)
-        
-        try:
-            response = Response.query.filter(
-                Response.setup_id.in_(setup_ids),
-                Response.question_id == 1
-            ).order_by(Response.timestamp.desc()).first()
-            
-            if response:
-                response.answer = json.dumps(selected)
-                response.is_valid = True
-            else:
-                response = Response(
-                    setup_id=setup.id,
-                    question_id=1,
-                    answer=json.dumps(selected),
-                    is_valid=True
-                )
-                db.session.add(response)
                 
-            db.session.commit()
-            flash('Initiatives saved successfully!', 'success')
-            return redirect(url_for('routes.questionnaire', initiative_index=0))
+        if request.method == 'POST':
+            selected = request.form.getlist('selected_initiatives')
             
-        except Exception as e:
-            logger.error(f"Error saving initiatives: {str(e)}")
-            db.session.rollback()
-            flash('Failed to save initiatives. Please try again.', 'error')
-    
-    return render_template('business_initiatives.html', 
-                        initiatives=initiatives_list,
-                        selected=selected)
+            if not 1 <= len(selected) <= 3:
+                flash('Please select between 1 and 3 initiatives.', 'error')
+                return render_template('business_initiatives.html', 
+                                   initiatives=initiatives,
+                                   selected=selected)
+            
+            try:
+                response = Response.query.filter_by(
+                    setup_id=setup.id,
+                    question_id=1
+                ).order_by(Response.timestamp.desc()).first()
+                
+                if response:
+                    response.answer = json.dumps(selected)
+                    response.is_valid = True
+                else:
+                    response = Response(
+                        setup_id=setup.id,
+                        question_id=1,
+                        answer=json.dumps(selected),
+                        is_valid=True
+                    )
+                    db.session.add(response)
+                    
+                db.session.commit()
+                flash('Initiatives saved successfully!', 'success')
+                return redirect(url_for('routes.questionnaire', initiative_index=0))
+                
+            except Exception as e:
+                logger.error(f"Error saving initiatives: {str(e)}")
+                db.session.rollback()
+                flash('Failed to save initiatives. Please try again.', 'error')
+        
+        return render_template('business_initiatives.html', 
+                           initiatives=initiatives,
+                           selected=selected)
+                           
+    except Exception as e:
+        logger.error(f"Error in initiatives: {str(e)}")
+        flash('An error occurred. Please try again.', 'error')
+        return redirect(url_for('routes.index'))
 
 @routes.route('/questionnaire')
 @routes.route('/questionnaire/<int:initiative_index>')
@@ -206,13 +177,9 @@ def questionnaire(initiative_index=None):
         flash('Setup not found', 'error')
         return redirect(url_for('routes.setup'))
         
-    leader_email = setup.leader_email
-    all_setups = Setup.query.filter_by(leader_email=leader_email).all()
-    setup_ids = [s.id for s in all_setups]
-    
-    initiatives_response = Response.query.filter(
-        Response.setup_id.in_(setup_ids),
-        Response.question_id == 1
+    initiatives_response = Response.query.filter_by(
+        setup_id=setup.id,
+        question_id=1
     ).order_by(Response.timestamp.desc()).first()
     
     if not initiatives_response:
@@ -245,10 +212,14 @@ def questionnaire(initiative_index=None):
             ).order_by(Question.order).all()
         }
         
+        if not questions[current_initiative]:
+            flash(f'No questions found for {current_initiative}', 'error')
+            return redirect(url_for('routes.initiatives'))
+        
         saved_answers = {}
-        answers = Response.query.filter(
-            Response.setup_id.in_(setup_ids),
-            Response.is_valid == True
+        answers = Response.query.filter_by(
+            setup_id=setup.id,
+            is_valid=True
         ).all()
         
         for answer in answers:
@@ -266,8 +237,8 @@ def questionnaire(initiative_index=None):
         ).count()
         
         answered_questions = Response.query.filter(
-            Response.setup_id.in_(setup_ids),
-            Response.is_valid == True,
+            Response.setup_id==setup.id,
+            Response.is_valid==True,
             Response.question_id != 1
         ).count()
         
@@ -296,7 +267,6 @@ def save_answer():
             'message': 'Setup not completed'
         }), 403
         
-    leader_email = setup.leader_email
     try:
         data = request.get_json()
         question_id = data.get('question_id')
@@ -308,12 +278,9 @@ def save_answer():
                 'message': 'Missing required fields'
             }), 400
         
-        all_setups = Setup.query.filter_by(leader_email=leader_email).all()
-        setup_ids = [s.id for s in all_setups]
-        
-        response = Response.query.filter(
-            Response.setup_id.in_(setup_ids),
-            Response.question_id == question_id
+        response = Response.query.filter_by(
+            setup_id=setup.id,
+            question_id=question_id
         ).order_by(Response.timestamp.desc()).first()
         
         if response:
@@ -330,9 +297,9 @@ def save_answer():
             
         db.session.commit()
         
-        initiatives_response = Response.query.filter(
-            Response.setup_id.in_(setup_ids),
-            Response.question_id == 1
+        initiatives_response = Response.query.filter_by(
+            setup_id=setup.id,
+            question_id=1
         ).order_by(Response.timestamp.desc()).first()
         
         if not initiatives_response:
@@ -347,8 +314,8 @@ def save_answer():
         ).count()
         
         answered_questions = Response.query.filter(
-            Response.setup_id.in_(setup_ids),
-            Response.is_valid == True,
+            Response.setup_id==setup.id,
+            Response.is_valid==True,
             Response.question_id != 1
         ).count()
         
@@ -375,13 +342,9 @@ def assessment_results():
         flash('Setup not found', 'error')
         return redirect(url_for('routes.setup'))
         
-    leader_email = setup.leader_email
-    all_setups = Setup.query.filter_by(leader_email=leader_email).all()
-    setup_ids = [s.id for s in all_setups]
-    
-    responses = Response.query.filter(
-        Response.setup_id.in_(setup_ids),
-        Response.is_valid == True
+    responses = Response.query.filter_by(
+        setup_id=setup.id,
+        is_valid=True
     ).all()
     
     initiatives_response = next((r for r in responses if r.question_id == 1), None)
@@ -434,13 +397,9 @@ def generate_roadmap():
         return setup_redirect
         
     setup = get_latest_setup(current_user.id)
-    leader_email = setup.leader_email
-    all_setups = Setup.query.filter_by(leader_email=leader_email).all()
-    setup_ids = [s.id for s in all_setups]
-    
-    initiatives_response = Response.query.filter(
-        Response.setup_id.in_(setup_ids),
-        Response.question_id == 1
+    initiatives_response = Response.query.filter_by(
+        setup_id=setup.id,
+        question_id=1
     ).order_by(Response.timestamp.desc()).first()
     
     if not initiatives_response:
@@ -459,10 +418,10 @@ def generate_roadmap():
             ).all()
             
             for question in questions:
-                response = Response.query.filter(
-                    Response.setup_id.in_(setup_ids),
-                    Response.question_id == question.id,
-                    Response.is_valid == True
+                response = Response.query.filter_by(
+                    setup_id=setup.id,
+                    question_id=question.id,
+                    is_valid=True
                 ).first()
                 
                 if not response:
@@ -487,7 +446,6 @@ def generate_assessment():
             'message': 'Setup not found'
         }), 404
 
-    leader_email = setup.leader_email
     try:
         if not hasattr(current_user, 'credentials') or not current_user.credentials:
             return jsonify({
@@ -495,12 +453,9 @@ def generate_assessment():
                 'message': 'No Google Drive credentials found. Please sign in again.'
             }), 401
             
-        all_setups = Setup.query.filter_by(leader_email=leader_email).all()
-        setup_ids = [s.id for s in all_setups]
-        
-        responses = Response.query.filter(
-            Response.setup_id.in_(setup_ids),
-            Response.is_valid == True
+        responses = Response.query.filter_by(
+            setup_id=setup.id,
+            is_valid=True
         ).all()
         
         initiatives_response = next((r for r in responses if r.question_id == 1), None)
@@ -588,115 +543,61 @@ Selected Business Initiatives:
 @routes.route('/admin/initiatives')
 @admin_required
 def admin_initiatives():
-    initiatives = [
-        {
-            "title": initiative["title"],
-            "description": initiative["description"]
-        } for initiative in initiatives_list
-    ]
-    return render_template('admin/initiatives.html', initiatives=initiatives)
+    try:
+        initiatives = Initiative.query.order_by(Initiative.order).all()
+        return render_template('admin/initiatives.html', initiatives=initiatives)
+    except Exception as e:
+        logger.error(f"Error loading initiatives: {str(e)}")
+        flash('Error loading initiatives', 'error')
+        return redirect(url_for('routes.index'))
 
 @routes.route('/admin/initiatives/add', methods=['GET', 'POST'])
 @admin_required
 def admin_add_initiative():
     if request.method == 'POST':
         try:
-            title = request.form['title']
-            description = request.form['description']
-            
-            initiatives_list.append({
-                "title": title,
-                "description": description
-            })
-            
+            initiative = Initiative(
+                title=request.form['title'],
+                description=request.form['description'],
+                order=Initiative.query.count()
+            )
+            db.session.add(initiative)
+            db.session.commit()
             flash('Initiative added successfully!', 'success')
             return redirect(url_for('routes.admin_initiatives'))
         except Exception as e:
-            flash(f'Error adding initiative: {str(e)}', 'error')
+            logger.error(f"Error adding initiative: {str(e)}")
+            flash('Error adding initiative', 'error')
+            db.session.rollback()
     return render_template('admin/initiative_form.html')
 
-@routes.route('/admin/initiatives/edit/<string:title>', methods=['GET', 'POST'])
+@routes.route('/admin/initiatives/edit/<int:initiative_id>', methods=['GET', 'POST'])
 @admin_required
-def admin_edit_initiative(title):
-    initiative = next((i for i in initiatives_list if i["title"] == title), None)
-    if not initiative:
-        flash('Initiative not found', 'error')
-        return redirect(url_for('routes.admin_initiatives'))
-        
+def admin_edit_initiative(initiative_id):
+    initiative = Initiative.query.get_or_404(initiative_id)
     if request.method == 'POST':
         try:
-            initiative["title"] = request.form['title']
-            initiative["description"] = request.form['description']
+            initiative.title = request.form['title']
+            initiative.description = request.form['description']
+            db.session.commit()
             flash('Initiative updated successfully!', 'success')
             return redirect(url_for('routes.admin_initiatives'))
         except Exception as e:
-            flash(f'Error updating initiative: {str(e)}', 'error')
+            logger.error(f"Error updating initiative: {str(e)}")
+            flash('Error updating initiative', 'error')
+            db.session.rollback()
     return render_template('admin/initiative_form.html', initiative=initiative)
 
-@routes.route('/admin/initiatives/delete/<string:title>', methods=['POST'])
+@routes.route('/admin/initiatives/delete/<int:initiative_id>', methods=['POST'])
 @admin_required
-def admin_delete_initiative(title):
+def admin_delete_initiative(initiative_id):
     try:
-        initiatives_list[:] = [i for i in initiatives_list if i["title"] != title]
+        initiative = Initiative.query.get_or_404(initiative_id)
+        db.session.delete(initiative)
+        db.session.commit()
         flash('Initiative deleted successfully!', 'success')
     except Exception as e:
-        flash(f'Error deleting initiative: {str(e)}', 'error')
+        logger.error(f"Error deleting initiative: {str(e)}")
+        flash('Error deleting initiative', 'error')
+        db.session.rollback()
     return redirect(url_for('routes.admin_initiatives'))
-
-@routes.route('/admin/questions')
-@admin_required
-def admin_questions():
-    questions = Question.query.order_by(Question.strategic_goal, Question.order).all()
-    return render_template('admin/questions.html', questions=questions)
-
-@routes.route('/admin/questions/add', methods=['GET', 'POST'])
-@admin_required
-def admin_add_question():
-    if request.method == 'POST':
-        try:
-            question = Question(
-                strategic_goal=request.form['strategic_goal'],
-                major_cnapp_area=request.form['major_cnapp_area'],
-                text=request.form['text'],
-                options=request.form['options'].split(','),
-                weighting_score=request.form['weighting_score'],
-                order=int(request.form['order'])
-            )
-            db.session.add(question)
-            db.session.commit()
-            flash('Question added successfully!', 'success')
-            return redirect(url_for('routes.admin_questions'))
-        except Exception as e:
-            flash(f'Error adding question: {str(e)}', 'error')
-    return render_template('admin/question_form.html')
-
-@routes.route('/admin/questions/edit/<int:question_id>', methods=['GET', 'POST'])
-@admin_required
-def admin_edit_question(question_id):
-    question = Question.query.get_or_404(question_id)
-    if request.method == 'POST':
-        try:
-            question.strategic_goal = request.form['strategic_goal']
-            question.major_cnapp_area = request.form['major_cnapp_area']
-            question.text = request.form['text']
-            question.options = request.form['options'].split(',')
-            question.weighting_score = request.form['weighting_score']
-            question.order = int(request.form['order'])
-            db.session.commit()
-            flash('Question updated successfully!', 'success')
-            return redirect(url_for('routes.admin_questions'))
-        except Exception as e:
-            flash(f'Error updating question: {str(e)}', 'error')
-    return render_template('admin/question_form.html', question=question)
-
-@routes.route('/admin/questions/delete/<int:question_id>', methods=['POST'])
-@admin_required
-def admin_delete_question(question_id):
-    try:
-        question = Question.query.get_or_404(question_id)
-        db.session.delete(question)
-        db.session.commit()
-        flash('Question deleted successfully!', 'success')
-    except Exception as e:
-        flash(f'Error deleting question: {str(e)}', 'error')
-    return redirect(url_for('routes.admin_questions'))
