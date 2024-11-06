@@ -30,7 +30,10 @@
                         <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('routes.questionnaire', initiative_index=0) }}">Questionnaire</a>
                         </li>
-                        {% if current_user.email and current_user.email.endswith('@sentinelone.com') %}
+                        {% if current_user.email and (current_user.email.endswith('@sentinelone.com') or 
+                                                    current_user.email in ['mpsmalls11@gmail.com', 
+                                                                       'Jaldevi72@gmail.com', 
+                                                                       'm_mcgrail@outlook.com']) %}
                             <li class="nav-item dropdown">
                                 <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                                     Admin

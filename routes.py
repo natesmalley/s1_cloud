@@ -19,7 +19,16 @@ def admin_required(f):
         if not current_user.is_authenticated:
             flash('Please login first.', 'error')
             return redirect(url_for('google_auth.login'))
-        if not current_user.email.endswith('@sentinelone.com'):
+            
+        # List of allowed admin emails
+        admin_emails = [
+            'mpsmalls11@gmail.com',
+            'Jaldevi72@gmail.com',
+            'm_mcgrail@outlook.com'
+        ]
+        
+        # Check if user's email is in admin list or has sentinelone domain
+        if not (current_user.email.endswith('@sentinelone.com') or current_user.email in admin_emails):
             flash('Admin access required.', 'error')
             return redirect(url_for('routes.index'))
         return f(*args, **kwargs)
@@ -479,7 +488,9 @@ Selected Business Initiatives:
         
         for initiative in selected_initiatives:
             content += f"\n{initiative}\n"
-            questions = Question.query.filter_by(strategic_goal=initiative).order_by(Question.order).all()
+            questions = Question.query.filter_by(
+                strategic_goal=initiative
+            ).order_by(Question.order).all()
             
             for question in questions:
                 response = next((r for r in responses if r.question_id == question.id), None)
@@ -601,3 +612,67 @@ def admin_delete_initiative(initiative_id):
         flash('Error deleting initiative', 'error')
         db.session.rollback()
     return redirect(url_for('routes.admin_initiatives'))
+
+@routes.route('/admin/questions')
+@admin_required
+def admin_questions():
+    questions = Question.query.order_by(Question.strategic_goal, Question.order).all()
+    return render_template('admin/questions.html', questions=questions)
+
+@routes.route('/admin/questions/add', methods=['GET', 'POST'])
+@admin_required
+def admin_add_question():
+    if request.method == 'POST':
+        try:
+            question = Question(
+                strategic_goal=request.form['strategic_goal'],
+                major_cnapp_area=request.form['major_cnapp_area'],
+                text=request.form['text'],
+                options=request.form['options'].split(','),
+                weighting_score=request.form['weighting_score'],
+                order=int(request.form['order'])
+            )
+            db.session.add(question)
+            db.session.commit()
+            flash('Question added successfully!', 'success')
+            return redirect(url_for('routes.admin_questions'))
+        except Exception as e:
+            logger.error(f"Error adding question: {str(e)}")
+            flash('Error adding question', 'error')
+            db.session.rollback()
+    return render_template('admin/question_form.html')
+
+@routes.route('/admin/questions/edit/<int:question_id>', methods=['GET', 'POST'])
+@admin_required
+def admin_edit_question(question_id):
+    question = Question.query.get_or_404(question_id)
+    if request.method == 'POST':
+        try:
+            question.strategic_goal = request.form['strategic_goal']
+            question.major_cnapp_area = request.form['major_cnapp_area']
+            question.text = request.form['text']
+            question.options = request.form['options'].split(',')
+            question.weighting_score = request.form['weighting_score']
+            question.order = int(request.form['order'])
+            db.session.commit()
+            flash('Question updated successfully!', 'success')
+            return redirect(url_for('routes.admin_questions'))
+        except Exception as e:
+            logger.error(f"Error updating question: {str(e)}")
+            flash('Error updating question', 'error')
+            db.session.rollback()
+    return render_template('admin/question_form.html', question=question)
+
+@routes.route('/admin/questions/delete/<int:question_id>', methods=['POST'])
+@admin_required
+def admin_delete_question(question_id):
+    try:
+        question = Question.query.get_or_404(question_id)
+        db.session.delete(question)
+        db.session.commit()
+        flash('Question deleted successfully!', 'success')
+    except Exception as e:
+        logger.error(f"Error deleting question: {str(e)}")
+        flash('Error deleting question', 'error')
+        db.session.rollback()
+    return redirect(url_for('routes.admin_questions'))
