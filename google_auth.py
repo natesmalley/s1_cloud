@@ -17,8 +17,9 @@ GOOGLE_CLIENT_ID = os.environ["GOOGLE_OAUTH_CLIENT_ID"]
 GOOGLE_CLIENT_SECRET = os.environ["GOOGLE_OAUTH_CLIENT_SECRET"]
 GOOGLE_DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configuration"
 
-# Update callback URL to use port 8080
-REDIRECT_URL = 'https://8767fe56-c668-4fa2-9723-292ada26865d-00-2p1xk2p8ugpyl.kirk.replit.dev:8080/google_login/callback'
+# IMPORTANT: DO NOT MODIFY THIS URL - Replit handles port forwarding internally
+# Changing this URL will break Google OAuth authentication
+REDIRECT_URL = 'https://8767fe56-c668-4fa2-9723-292ada26865d-00-2p1xk2p8ugpyl.kirk.replit.dev/google_login/callback'
 
 REQUIRED_SCOPES = [
     "openid",
@@ -35,6 +36,9 @@ google_auth = Blueprint("google_auth", __name__)
 def login():
     try:
         logger.info("Initiating Google OAuth login process")
+        # Add warning log about redirect URL
+        logger.warning("DO NOT modify the redirect URL - it must match Google OAuth settings exactly")
+        
         google_provider_cfg = requests.get(GOOGLE_DISCOVERY_URL).json()
         authorization_endpoint = google_provider_cfg["authorization_endpoint"]
         
@@ -44,7 +48,7 @@ def login():
             scope=REQUIRED_SCOPES,
         )
         
-        logger.info(f"Full authorization request URI: {request_uri}")
+        logger.info(f"Authorization request URI: {request_uri}")
         return redirect(request_uri)
     except Exception as e:
         logger.error(f"Error in login: {str(e)}")
