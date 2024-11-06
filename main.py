@@ -4,11 +4,6 @@ from googleapiclient.discovery import build
 from models import Question, Response, User, db
 import json
 from app import create_app
-import logging
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # Create Flask app instance
 flask_app = create_app()
@@ -57,76 +52,39 @@ def apply_custom_css():
         .stCheckbox > div[role="checkbox"][aria-checked="true"] {
             background-color: var(--s1-purple) !important;
         }
+        
+        /* Progress bar */
+        .stProgress > div > div > div {
+            background-color: var(--s1-purple);
+        }
+        
+        /* Messages */
+        .stAlert {
+            background-color: rgba(80, 70, 228, 0.1);
+            border-color: var(--s1-purple);
+        }
+
+        /* Description text */
+        small {
+            color: var(--bs-gray-400);
+        }
         </style>
     ''', unsafe_allow_html=True)
 
-def validate_setup_form(recorder_name, recorder_email, customer_company, 
-                       customer_name, customer_title, customer_email):
-    """Validate the setup form inputs"""
-    if not all([recorder_name, recorder_email, customer_company, 
-                customer_name, customer_title, customer_email]):
-        return False, "All fields are required"
-    
-    # Basic email validation
-    if not '@' in recorder_email or not '@' in customer_email:
-        return False, "Please enter valid email addresses"
-        
-    return True, None
+st.set_page_config(
+    page_title="Cloud Security Roadmap Guide",
+    page_icon=None,
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-def show_setup():
-    st.header('Setup Information')
-    
-    # Verify user exists before showing form
-    with flask_app.app_context():
-        user = User.query.filter_by(id=st.session_state.user_id).first()
-        if not user:
-            st.error("User session expired. Please sign in again.")
-            st.session_state.authenticated = False
-            st.rerun()
-            return
-    
-    with st.form("setup_form"):
-        st.subheader("Recorder Information")
-        recorder_name = st.text_input("Name *", key="recorder_name")
-        recorder_email = st.text_input("Email *", key="recorder_email")
-        
-        st.subheader("Customer Information")
-        customer_company = st.text_input("Company *", key="customer_company")
-        customer_name = st.text_input("Name *", key="customer_name")
-        customer_title = st.text_input("Title *", key="customer_title")
-        customer_email = st.text_input("Email *", key="customer_email")
-        
-        submitted = st.form_submit_button("Save and Continue")
-        
-        if submitted:
-            is_valid, error_message = validate_setup_form(
-                recorder_name, recorder_email, customer_company,
-                customer_name, customer_title, customer_email
-            )
-            
-            if is_valid:
-                with flask_app.app_context():
-                    try:
-                        user = User.query.filter_by(id=st.session_state.user_id).first()
-                        if user:
-                            user.recorder_name = recorder_name
-                            user.recorder_email = recorder_email
-                            user.customer_company = customer_company
-                            user.customer_name = customer_name
-                            user.customer_title = customer_title
-                            user.customer_email = customer_email
-                            user.setup_completed = True
-                            db.session.commit()
-                            st.session_state.setup_completed = True
-                            st.success("Setup completed successfully!")
-                            st.rerun()
-                        else:
-                            st.error("User not found. Please try logging in again.")
-                    except Exception as e:
-                        logger.error(f"Error saving setup information: {str(e)}")
-                        st.error(f"Error saving setup information: {str(e)}")
-            else:
-                st.error(error_message)
+def validate_answer(selected_initiatives):
+    """Validate the selected initiatives"""
+    if not selected_initiatives:
+        return False, "Please select at least one option"
+    if len(selected_initiatives) > 3:
+        return False, "Please select no more than 3 options"
+    return True, None
 
 def calculate_progress():
     """Calculate user's progress through the questionnaire"""
@@ -144,42 +102,21 @@ def calculate_progress():
                 is_valid=True
             ).count()
             
-            progress = (answered_questions / total_questions) * 100
-            
-            # Update user's progress
-            user = User.query.filter_by(id=st.session_state.user_id).first()
-            if user:
-                user.progress_percentage = progress
-                db.session.commit()
-                
-            return progress
+            return (answered_questions / total_questions) * 100
         except Exception as e:
-            logger.error(f"Error calculating progress: {str(e)}")
+            st.error(f"Error calculating progress: {str(e)}")
             return 0
 
-def validate_answer(selected_initiatives):
-    """Validate the selected initiatives"""
-    if not selected_initiatives:
-        return False, "Please select at least one option"
-    if len(selected_initiatives) > 3:
-        return False, "Please select no more than 3 options"
-    return True, None
-
 def save_answer(selected_initiatives):
-    """Save the answer to database with validation"""
+    """Save the answer to database"""
     with flask_app.app_context():
         try:
-            # First validate the answer
-            is_valid, validation_message = validate_answer(selected_initiatives)
-            if not is_valid:
-                return False, validation_message
-
-            # Verify user exists
-            user = User.query.filter_by(id=st.session_state.user_id).first()
+            # First verify user exists
+            user = User.query.get(st.session_state.user_id)
             if not user:
                 return False, "User not found"
 
-            # Save the response
+            # Now save the response
             response = Response.query.filter_by(
                 user_id=st.session_state.user_id,
                 question_id=1
@@ -187,70 +124,55 @@ def save_answer(selected_initiatives):
             
             if response:
                 response.answer = json.dumps(selected_initiatives)
-                response.is_valid = is_valid
-                response.validation_message = validation_message
             else:
                 response = Response(
                     user_id=st.session_state.user_id,
                     question_id=1,
                     answer=json.dumps(selected_initiatives),
-                    is_valid=is_valid,
-                    validation_message=validation_message
+                    is_valid=True
                 )
                 db.session.add(response)
             
             db.session.commit()
-            
-            # Update progress in session
-            progress = calculate_progress()
-            st.session_state.progress = progress
-            
             return True, None
         except Exception as e:
-            logger.error(f"Error saving answer: {str(e)}")
             db.session.rollback()
             return False, f"Failed to save answer: {str(e)}"
 
 def show_questionnaire():
     st.header('Strategic Assessment Questionnaire')
+    st.markdown('---')  # Divider
     
     st.write('### Please select your top Business Initiatives in Cloud Security (select 1-3)')
     
     initiatives = [
         {
             'title': 'Cloud Adoption and Business Alignment',
-            'description': 'Ensure cloud adoption supports overall business objectives by leveraging SentinelOne\'s Unified Visibility and Secrets Scanning.',
-            'icon': '☁️'
+            'description': 'Ensure cloud adoption supports overall business objectives by leveraging SentinelOne\'s Unified Visibility and Secrets Scanning.'
         },
         {
             'title': 'Achieving Key Business Outcomes',
-            'description': 'Use SentinelOne\'s Offensive Security Engine to drive business outcomes by proactively identifying and mitigating risks.',
-            'icon': '🎯'
+            'description': 'Use SentinelOne\'s Offensive Security Engine to drive business outcomes by proactively identifying and mitigating risks.'
         },
         {
             'title': 'Maximizing ROI for Cloud Security',
-            'description': 'Optimize return on investment with SentinelOne\'s AI-Powered Threat Detection and Response.',
-            'icon': '💰'
+            'description': 'Optimize return on investment with SentinelOne\'s AI-Powered Threat Detection and Response.'
         },
         {
             'title': 'Integration of Cloud Security with Business Strategy',
-            'description': 'Align cloud security goals with broader IT and business strategies using SentinelOne\'s Unified Platform.',
-            'icon': '🔄'
+            'description': 'Align cloud security goals with broader IT and business strategies using SentinelOne\'s Unified Platform.'
         },
         {
             'title': 'Driving Innovation and Value Delivery',
-            'description': 'Leverage SentinelOne\'s Offensive Security Engine to enable innovation while reducing vulnerabilities.',
-            'icon': '💡'
+            'description': 'Leverage SentinelOne\'s Offensive Security Engine to enable innovation while reducing vulnerabilities.'
         },
         {
             'title': 'Supporting Digital Transformation',
-            'description': 'Enhance digital transformation initiatives using SentinelOne\'s Agentless and Agent-Based Capabilities.',
-            'icon': '🚀'
+            'description': 'Enhance digital transformation initiatives using SentinelOne\'s Agentless and Agent-Based Capabilities.'
         },
         {
             'title': 'Balancing Rapid Adoption with Compliance',
-            'description': 'Maintain security compliance using SentinelOne\'s Secrets Scanning and Cloud Workload Security.',
-            'icon': '⚖️'
+            'description': 'Maintain security compliance using SentinelOne\'s Secrets Scanning and Cloud Workload Security.'
         }
     ]
     
@@ -263,12 +185,8 @@ def show_questionnaire():
                 user_id=st.session_state.user_id,
                 question_id=1
             ).first()
-            if response and response.answer:
-                saved_initiatives = json.loads(response.answer)
-            else:
-                saved_initiatives = []
-        except Exception as e:
-            logger.error(f"Error loading saved initiatives: {str(e)}")
+            saved_initiatives = json.loads(response.answer) if response else []
+        except Exception:
             saved_initiatives = []
 
     for initiative in initiatives:
@@ -277,42 +195,29 @@ def show_questionnaire():
         
         col1, col2 = st.columns([0.1, 0.9])
         with col1:
-            if st.checkbox(
-                label=initiative['title'],  # Use actual title instead of empty string
-                value=is_selected,
-                disabled=is_disabled,
-                key=f"cb_{initiative['title']}",
-                label_visibility="collapsed"  # Hide label but keep it for accessibility
-            ):
+            # Fix: Remove the empty string and use only the label parameter
+            if st.checkbox(label=initiative['title'], 
+                         value=is_selected,
+                         disabled=is_disabled,
+                         key=f"cb_{initiative['title']}"):
                 selected_initiatives.append(initiative['title'])
         with col2:
-            st.markdown(f'''
-                <div style="padding: 10px; border-radius: 5px; background-color: rgba(80, 70, 228, 0.1);">
-                    <div style="display: flex; align-items: center;">
-                        <span style="font-size: 24px; margin-right: 10px;">{initiative['icon']}</span>
-                        <div>
-                            <strong style="color: white;">{initiative['title']}</strong>
-                            <p style="margin: 5px 0 0 0; color: #aaa; font-size: 0.9em;">
-                                {initiative['description']}
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            ''', unsafe_allow_html=True)
+            st.markdown(f"**{initiative['title']}**")
+            st.markdown(f"<small>{initiative['description']}</small>", unsafe_allow_html=True)
     
-    if selected_initiatives:
-        is_valid, validation_message = validate_answer(selected_initiatives)
-        if is_valid:
-            st.success(f'Selected {len(selected_initiatives)} of 3 maximum options')
-            save_success, save_error = save_answer(selected_initiatives)
-            if not save_success:
-                st.error(save_error)
-        else:
-            st.warning(validation_message)
+    # Add a container for the selection count
+    if len(selected_initiatives) > 0:
+        st.success(f'Selected {len(selected_initiatives)} of 3 maximum options')
     else:
         st.warning('Please select at least one option')
     
-    # Show progress
+    # Save answers when changes occur
+    if selected_initiatives:
+        save_success, save_error = save_answer(selected_initiatives)
+        if not save_success:
+            st.error(save_error)
+
+    # Show current progress
     progress = calculate_progress()
     st.sidebar.header('Progress')
     st.sidebar.progress(progress / 100)
@@ -321,19 +226,13 @@ def show_questionnaire():
 def main():
     apply_custom_css()
     
-    # Initialize database tables at startup
-    with flask_app.app_context():
-        try:
-            db.create_all()
-        except Exception as e:
-            logger.error(f"Error initializing database: {str(e)}")
-    
+    # Update logo handling
     col1, col2 = st.columns([0.1, 0.9])
     with col1:
         try:
             st.image('paladin _inPixio.png', width=80)
-        except Exception:
-            st.write("S1")
+        except Exception as e:
+            st.write("S1")  # Fallback text if image fails to load
     with col2:
         st.title('Cloud Security Roadmap Guide')
     
@@ -341,32 +240,13 @@ def main():
         st.session_state.authenticated = False
         
     if not st.session_state.authenticated:
-        if st.button('Sign in with Google'):
-            with flask_app.app_context():
-                # Create or get user
-                user = User.query.filter_by(email="test@example.com").first()
-                if not user:
-                    user = User(
-                        username="Test User",
-                        email="test@example.com"
-                    )
-                    db.session.add(user)
-                    db.session.commit()
-                
-                st.session_state.authenticated = True
-                st.session_state.user_id = user.id
-                st.rerun()
+        oauth_button = st.button('Sign in with Google')
+        if oauth_button:
+            # Handle OAuth flow
+            st.session_state.authenticated = True
+            st.session_state.user_id = 1  # For testing, we'll use a fixed user ID
     else:
-        # Check if setup is completed
-        if 'setup_completed' not in st.session_state:
-            with flask_app.app_context():
-                user = User.query.filter_by(id=st.session_state.user_id).first()
-                st.session_state.setup_completed = user.setup_completed if user else False
-        
-        if not st.session_state.setup_completed:
-            show_setup()
-        else:
-            show_questionnaire()
+        show_questionnaire()
 
 if __name__ == '__main__':
     # Set Streamlit to run on port 5000

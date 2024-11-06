@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, jsonify, request, redirect, url_for, flash, current_app
+from flask import Blueprint, render_template, jsonify, request
 from flask_login import login_required, current_user
 from extensions import db
 from models import Question, Response, Presentation, User
@@ -23,23 +23,28 @@ def validate_answer(question, answer):
         # Handle array of answers for multiple selection
         answer_list = answer if isinstance(answer, list) else [answer]
         
-        # Get valid options from question
-        valid_options = [opt['title'] for opt in question.options]
-        
         # Validate that all selected options are valid
-        if not all(opt in valid_options for opt in answer_list):
+        if not all(opt in question.options for opt in answer_list):
             return False, "Invalid option(s) selected"
-        
-        # Check min/max count validation rules
-        if question.validation_rules:
-            min_count = question.validation_rules.get('min_count', 0)
-            max_count = question.validation_rules.get('max_count', len(valid_options))
             
-            if len(answer_list) < min_count:
-                return False, f"Please select at least {min_count} option(s)"
-            if len(answer_list) > max_count:
-                return False, f"Please select no more than {max_count} option(s)"
+        # Check exact_count validation rule
+        if question.validation_rules and 'exact_count' in question.validation_rules:
+            required_count = question.validation_rules['exact_count']
+            if len(answer_list) != required_count:
+                return False, f"Please select exactly {required_count} options"
             
+    if question.validation_rules:
+        rules = question.validation_rules
+        if rules.get('min_length') and len(str(answer)) < rules['min_length']:
+            return False, f"Answer must be at least {rules['min_length']} characters long"
+            
+        if rules.get('max_length') and len(str(answer)) > rules['max_length']:
+            return False, f"Answer must not exceed {rules['max_length']} characters"
+            
+        if rules.get('pattern'):
+            if not re.match(rules['pattern'], str(answer)):
+                return False, "Answer format is invalid"
+                
     return True, None
 
 def calculate_progress(user_id):
@@ -70,44 +75,17 @@ def calculate_progress(user_id):
 @routes.route('/')
 def index():
     if current_user.is_authenticated:
-        if not current_user.setup_completed:
-            return redirect(url_for('routes.setup'))
-        return redirect(url_for('routes.questionnaire'))
+        return render_template('questionnaire.html')
     return render_template('index.html')
 
-@routes.route('/setup', methods=['GET', 'POST'])
+@routes.route('/setup')
 @login_required
 def setup():
-    if current_user.setup_completed:
-        return redirect(url_for('routes.questionnaire'))
-
-    if request.method == 'POST':
-        try:
-            current_user.recorder_name = request.form['recorder_name']
-            current_user.recorder_email = request.form['recorder_email']
-            current_user.customer_company = request.form['customer_company']
-            current_user.customer_name = request.form['customer_name']
-            current_user.customer_title = request.form['customer_title']
-            current_user.customer_email = request.form['customer_email']
-            current_user.setup_completed = True
-            
-            db.session.commit()
-            flash('Setup information saved successfully!', 'success')
-            return redirect(url_for('routes.questionnaire'))
-            
-        except Exception as e:
-            logger.error(f"Error saving setup information: {e}")
-            flash('Error saving setup information. Please try again.', 'error')
-            db.session.rollback()
-            
     return render_template('setup.html')
 
 @routes.route('/questionnaire')
 @login_required
 def questionnaire():
-    if not current_user.setup_completed:
-        flash('Please complete the setup first.', 'warning')
-        return redirect(url_for('routes.setup'))
     return render_template('questionnaire.html')
 
 @routes.route('/api/questions')
@@ -121,7 +99,7 @@ def get_questions():
         return jsonify([{
             'id': q.id,
             'text': q.text,
-            'question_type': q.question_type,
+            'type': q.question_type,
             'options': q.options,
             'required': q.required,
             'validation_rules': q.validation_rules
@@ -140,7 +118,7 @@ def get_saved_answers():
         ).all()
         return jsonify([{
             'question_id': r.question_id,
-            'answer': json.loads(r.answer) if isinstance(r.answer, str) else r.answer
+            'answer': r.answer
         } for r in responses])
     except Exception as e:
         logger.error(f"Error fetching saved answers: {str(e)}")
@@ -177,60 +155,42 @@ def submit_answer():
                 'status': 'success',
                 'is_valid': False,
                 'message': validation_message
-            }), 200
-        
-        # Ensure user exists
-        user = User.query.get(current_user.id)
-        if not user:
-            return jsonify({
-                'status': 'error',
-                'message': 'User not found'
-            }), 404
+            }), 200  # Return 200 for validation failures
         
         # Update or create response
-        try:
-            response = Response.query.filter_by(
+        response = Response.query.filter_by(
+            user_id=current_user.id,
+            question_id=data['question_id']
+        ).first()
+        
+        if response:
+            response.answer = json.dumps(data['answer']) if isinstance(data['answer'], list) else data['answer']
+            response.is_valid = is_valid
+            response.validation_message = validation_message
+        else:
+            response = Response(
                 user_id=current_user.id,
-                question_id=data['question_id']
-            ).first()
-            
-            answer_json = json.dumps(data['answer']) if isinstance(data['answer'], (list, dict)) else data['answer']
-            
-            if response:
-                response.answer = answer_json
-                response.is_valid = is_valid
-                response.validation_message = validation_message
-            else:
-                response = Response(
-                    user_id=current_user.id,
-                    question_id=data['question_id'],
-                    answer=answer_json,
-                    is_valid=is_valid,
-                    validation_message=validation_message
-                )
-                db.session.add(response)
-            
-            db.session.commit()
-            
-            # Update progress
-            progress = calculate_progress(current_user.id)
-            
-            return jsonify({
-                'status': 'success',
-                'progress': progress,
-                'is_valid': is_valid,
-                'message': validation_message
-            })
-        except Exception as e:
-            logger.error(f"Database error while saving response: {str(e)}")
-            db.session.rollback()
-            return jsonify({
-                'status': 'error',
-                'message': 'Failed to save answer. Please try again.'
-            }), 500
-            
+                question_id=data['question_id'],
+                answer=json.dumps(data['answer']) if isinstance(data['answer'], list) else data['answer'],
+                is_valid=is_valid,
+                validation_message=validation_message
+            )
+            db.session.add(response)
+        
+        db.session.commit()
+        
+        # Update progress
+        progress = calculate_progress(current_user.id)
+        
+        return jsonify({
+            'status': 'success',
+            'progress': progress,
+            'is_valid': is_valid,
+            'message': validation_message
+        })
     except Exception as e:
         logger.error(f"Error submitting answer: {str(e)}")
+        db.session.rollback()
         return jsonify({
             'status': 'error',
             'message': str(e)
@@ -267,8 +227,7 @@ def validate_all_answers():
                 })
             elif question.id in answered_questions:
                 response = answered_questions[question.id]
-                answer = json.loads(response.answer) if isinstance(response.answer, str) else response.answer
-                is_valid, message = validate_answer(question, answer)
+                is_valid, message = validate_answer(question, response.answer)
                 if not is_valid and question.required:
                     invalid_questions.append({
                         'question_id': question.id,
@@ -309,7 +268,7 @@ def generate_roadmap():
         
         doc_id = google_drive.create_presentation(
             current_user.credentials,
-            f"Cloud Security Roadmap - {current_user.customer_company}",
+            f"Roadmap for {current_user.username}",
             content
         )
         
@@ -334,19 +293,7 @@ def generate_roadmap():
         }), 500
 
 def generate_roadmap_content(responses):
-    content = "# Cloud Security Roadmap\n\n"
-    content += "## Selected Business Initiatives\n\n"
-    
-    for response in responses:
-        question = Question.query.get(response.question_id)
-        if question:
-            content += f"### {question.text}\n"
-            answer = json.loads(response.answer) if isinstance(response.answer, str) else response.answer
-            if isinstance(answer, list):
-                for item in answer:
-                    content += f"- {item}\n"
-            else:
-                content += f"{answer}\n"
-            content += "\n"
-    
+    content = "# Strategic Roadmap\n\n"
+    content += "## Executive Summary\n"
+    # Add more sections based on responses
     return content

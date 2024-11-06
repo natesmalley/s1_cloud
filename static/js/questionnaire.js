@@ -5,7 +5,6 @@ class Questionnaire {
         this.answers = new Map();
         this.validationErrors = new Map();
         this.selectedOptions = new Set();
-        this.filteredQuestions = [];
         this.initialize();
     }
 
@@ -31,7 +30,6 @@ class Questionnaire {
             }
             
             this.questions = questionsData;
-            this.filteredQuestions = [this.questions[0]];  // Start with strategic goals question
             
             // Initialize answers map with saved answers
             if (Array.isArray(savedAnswers)) {
@@ -41,12 +39,6 @@ class Questionnaire {
                         answer.answer.forEach(option => this.selectedOptions.add(option));
                     }
                 });
-                
-                // If strategic goals are already selected, update filtered questions
-                const strategicGoalsAnswer = savedAnswers.find(a => a.question_id === 1);
-                if (strategicGoalsAnswer) {
-                    this.updateFilteredQuestions(strategicGoalsAnswer.answer);
-                }
             }
             
             this.renderQuestion();
@@ -59,23 +51,6 @@ class Questionnaire {
         }
     }
 
-    updateFilteredQuestions(selectedGoals) {
-        // Reset filtered questions to include only the first question
-        this.filteredQuestions = [this.questions[0]];
-        
-        if (!Array.isArray(selectedGoals)) return;
-        
-        // Add questions that match the selected strategic goals
-        this.questions.slice(1).forEach(question => {
-            if (selectedGoals.includes(question.parent_answer)) {
-                this.filteredQuestions.push(question);
-            }
-        });
-        
-        // Sort by order
-        this.filteredQuestions.sort((a, b) => a.order - b.order);
-    }
-
     renderQuestion() {
         const container = document.getElementById('questions-container');
         if (!container) {
@@ -83,7 +58,7 @@ class Questionnaire {
             return;
         }
 
-        const question = this.filteredQuestions[this.currentIndex];
+        const question = this.questions[this.currentIndex];
         if (!question) return;
 
         container.innerHTML = `
@@ -97,7 +72,7 @@ class Questionnaire {
                         ${this.renderQuestionInput(question)}
                     </div>
                     <div class="selected-count mt-3">
-                        Selected ${this.selectedOptions.size} of ${question.validation_rules?.min_count || 0}-${question.validation_rules?.max_count || 1} required options
+                        Selected ${this.selectedOptions.size} of ${question.validation_rules?.min_count || 0}-${question.validation_rules?.max_count || 3} required options
                     </div>
                     <div class="invalid-feedback" id="validation-message">
                         ${this.validationErrors.get(question.id) || ''}
@@ -131,19 +106,14 @@ class Questionnaire {
         options.forEach(option => {
             option.addEventListener('click', () => {
                 const optionValue = option.dataset.option;
-                const question = this.filteredQuestions[this.currentIndex];
-                const maxCount = question.validation_rules?.max_count || 1;
+                const question = this.questions[this.currentIndex];
+                const maxCount = question.validation_rules?.max_count || 3;
                 const minCount = question.validation_rules?.min_count || 1;
 
                 if (this.selectedOptions.has(optionValue)) {
                     option.classList.remove('selected');
                     this.selectedOptions.delete(optionValue);
                 } else if (this.selectedOptions.size < maxCount) {
-                    // For non-strategic questions, clear previous selection
-                    if (question.id !== 1) {
-                        this.selectedOptions.clear();
-                        options.forEach(opt => opt.classList.remove('selected'));
-                    }
                     option.classList.add('selected');
                     this.selectedOptions.add(optionValue);
                 }
@@ -155,17 +125,12 @@ class Questionnaire {
                 if (countElement) {
                     countElement.textContent = `Selected ${this.selectedOptions.size} of ${minCount}-${maxCount} required options`;
                 }
-                
-                // If this is the strategic goals question, update filtered questions
-                if (question.id === 1) {
-                    this.updateFilteredQuestions(Array.from(this.selectedOptions));
-                }
             });
         });
     }
 
     async validateCurrentAnswer() {
-        const question = this.filteredQuestions[this.currentIndex];
+        const question = this.questions[this.currentIndex];
         if (!question) return false;
 
         const answer = Array.from(this.selectedOptions);
@@ -229,8 +194,8 @@ class Questionnaire {
 
         controls.classList.remove('d-none');
         prevBtn.disabled = this.currentIndex === 0;
-        nextBtn.classList.toggle('d-none', this.currentIndex === this.filteredQuestions.length - 1);
-        submitBtn.classList.toggle('d-none', this.currentIndex !== this.filteredQuestions.length - 1);
+        nextBtn.classList.toggle('d-none', this.currentIndex === this.questions.length - 1);
+        submitBtn.classList.toggle('d-none', this.currentIndex !== this.questions.length - 1);
 
         this.setupEventListeners();
     }
@@ -248,7 +213,7 @@ class Questionnaire {
     async previousQuestion() {
         if (this.currentIndex > 0) {
             this.selectedOptions.clear();
-            const previousAnswer = this.answers.get(this.filteredQuestions[this.currentIndex - 1].id);
+            const previousAnswer = this.answers.get(this.questions[this.currentIndex - 1].id);
             if (Array.isArray(previousAnswer)) {
                 previousAnswer.forEach(option => this.selectedOptions.add(option));
             }
@@ -261,7 +226,7 @@ class Questionnaire {
     async nextQuestion() {
         if (await this.validateCurrentAnswer()) {
             this.selectedOptions.clear();
-            const nextAnswer = this.answers.get(this.filteredQuestions[this.currentIndex + 1]?.id);
+            const nextAnswer = this.answers.get(this.questions[this.currentIndex + 1]?.id);
             if (Array.isArray(nextAnswer)) {
                 nextAnswer.forEach(option => this.selectedOptions.add(option));
             }
