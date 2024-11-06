@@ -25,12 +25,23 @@ def save_answer(selected_initiatives):
     """Save the answer to database with validation"""
     with flask_app.app_context():
         try:
-            # First validate the answer
-            is_valid, validation_message = validate_answer(selected_initiatives)
-            if not is_valid:
-                return False, validation_message
-
-            # Save the response
+            # Verify the question exists
+            question = Question.query.get(1)
+            if not question:
+                return False, "Question not found"
+            
+            # Create test user if needed
+            user = User.query.get(st.session_state.user_id)
+            if not user:
+                user = User(
+                    id=st.session_state.user_id,
+                    username="Test User",
+                    email="test@example.com"
+                )
+                db.session.add(user)
+                db.session.commit()
+            
+            # Save response
             response = Response.query.filter_by(
                 user_id=st.session_state.user_id,
                 question_id=1
@@ -38,24 +49,21 @@ def save_answer(selected_initiatives):
             
             if response:
                 response.answer = json.dumps(selected_initiatives)
-                response.is_valid = is_valid
-                response.validation_message = validation_message
             else:
                 response = Response(
                     user_id=st.session_state.user_id,
                     question_id=1,
-                    answer=json.dumps(selected_initiatives),
-                    is_valid=is_valid,
-                    validation_message=validation_message
+                    answer=json.dumps(selected_initiatives)
                 )
                 db.session.add(response)
             
             db.session.commit()
             return True, None
+            
         except Exception as e:
             logger.error(f"Error saving answer: {str(e)}")
             db.session.rollback()
-            return False, f"Failed to save answer: {str(e)}"
+            return False, str(e)
 
 def calculate_progress():
     """Calculate user's progress through the questionnaire"""
@@ -79,54 +87,28 @@ def show_strategic_goals():
     """Show the initial strategic goals question"""
     st.write('### Please select your top Business Initiatives in Cloud Security (select 1-3)')
     
-    initiatives = [
-        {
-            'title': 'Cloud Adoption and Business Alignment',
-            'description': 'Ensure cloud adoption supports overall business objectives.',
-        },
-        {
-            'title': 'Achieving Key Business Outcomes',
-            'description': 'Drive security practices that directly support business outcomes.',
-        },
-        {
-            'title': 'Maximizing ROI for Cloud Security',
-            'description': 'Evaluate cloud security investments to maximize return on investment.',
-        },
-        {
-            'title': 'Integration of Cloud Security with Business Strategy',
-            'description': 'Integrate cloud security practices within broader IT strategies.',
-        },
-        {
-            'title': 'Driving Innovation and Value Delivery',
-            'description': 'Facilitate secure innovation and risk management.',
-        },
-        {
-            'title': 'Supporting Digital Transformation',
-            'description': 'Support digital transformation initiatives securely.',
-        },
-        {
-            'title': 'Balancing Rapid Adoption with Compliance',
-            'description': 'Balance rapid cloud adoption with compliance requirements.',
-        }
-    ]
-    
-    selected_initiatives = []
-    
-    for initiative in initiatives:
-        if st.checkbox(initiative['title'], help=initiative['description']):
-            selected_initiatives.append(initiative['title'])
-    
-    if selected_initiatives:
-        is_valid, validation_message = validate_answer(selected_initiatives)
-        if is_valid:
-            st.success(f'Selected {len(selected_initiatives)} of 3 maximum options')
-            save_success, save_error = save_answer(selected_initiatives)
-            if not save_success:
-                st.error(save_error)
+    with flask_app.app_context():
+        question = Question.query.get(1)
+        if not question:
+            st.error("Failed to load strategic goals question")
+            return
+            
+        selected_initiatives = []
+        for option in question.options:
+            if st.checkbox(option['title'], help=option['description']):
+                selected_initiatives.append(option['title'])
+        
+        if selected_initiatives:
+            is_valid, validation_message = validate_answer(selected_initiatives)
+            if is_valid:
+                st.success(f'Selected {len(selected_initiatives)} of 3 maximum options')
+                save_success, save_error = save_answer(selected_initiatives)
+                if not save_success:
+                    st.error(save_error)
+            else:
+                st.warning(validation_message)
         else:
-            st.warning(validation_message)
-    else:
-        st.warning('Please select at least one option')
+            st.warning('Please select at least one option')
 
 def show_questionnaire():
     st.header('Strategic Assessment Questionnaire')
@@ -150,11 +132,21 @@ def show_questionnaire():
             
             for question in questions:
                 st.subheader(question.text)
+                response = Response.query.filter_by(
+                    user_id=st.session_state.user_id,
+                    question_id=question.id
+                ).first()
+                
+                current_answer = json.loads(response.answer) if response and response.answer else []
+                
                 for option in question.options:
-                    st.checkbox(
+                    if st.checkbox(
                         option['title'],
+                        value=option['title'] in current_answer,
                         help=option['description']
-                    )
+                    ):
+                        if question.id not in [r.question_id for r in Response.query.filter_by(user_id=st.session_state.user_id).all()]:
+                            save_answer([option['title']])
     
     # Show progress
     progress = calculate_progress()
