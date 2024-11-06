@@ -11,15 +11,23 @@ class User(UserMixin, db.Model):
     last_question_id = db.Column(db.Integer, db.ForeignKey('question.id'), nullable=True)
     progress_percentage = db.Column(db.Float, default=0.0)
 
+class Setup(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    advisor_name = db.Column(db.String(100), nullable=False)
+    advisor_email = db.Column(db.String(120), nullable=False)
+    leader_name = db.Column(db.String(100), nullable=False)
+    leader_email = db.Column(db.String(120), nullable=False)
+    leader_employer = db.Column(db.String(200), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
 class Question(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    strategic_goal = db.Column(db.String(200), nullable=False)
+    major_cnapp_area = db.Column(db.String(100), nullable=False)
     text = db.Column(db.String(500), nullable=False)
-    question_type = db.Column(db.String(50), nullable=False)
-    options = db.Column(db.JSON)  # Will store structured options with title, description, and icon
-    required = db.Column(db.Boolean, default=True, nullable=False)
-    validation_rules = db.Column(db.JSON)  # Will store min_count and max_count for multiple selections
-    parent_question_id = db.Column(db.Integer, db.ForeignKey('question.id'), nullable=True)
-    parent_answer = db.Column(db.String(500), nullable=True)
+    options = db.Column(db.JSON)  # Will store multiple choice options
+    weighting_score = db.Column(db.String(20))  # Store the maturity score range
     order = db.Column(db.Integer, default=0)
 
 class Response(db.Model):

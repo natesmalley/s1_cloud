@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <h2 class="mb-4">Strategic Assessment</h2>
+            
+            <div class="card bg-dark">
+                <div class="card-body">
+                    <h3 class="card-title mb-4">Please select your top Business Initiatives in Cloud Security</h3>
+                    <p class="text-muted mb-4">Select 1-3 initiatives that best align with your objectives</p>
+                    
+                    <form method="POST" action="{{ url_for('routes.save_initiatives') }}">
+                        <div class="initiatives-list">
+                            {% for initiative in initiatives %}
+                            <div class="initiative-item mb-3 p-3 border border-secondary rounded">
+                                <div class="d-flex align-items-start">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" 
+                                               name="selected_initiatives" 
+                                               value="{{ initiative.title }}"
+                                               id="initiative_{{ loop.index }}"
+                                               {% if initiative.title in selected %} checked {% endif %}
+                                               onclick="validateSelection(this)">
+                                    </div>
+                                    <div class="ms-3">
+                                        <label class="form-check-label fw-bold mb-2" for="initiative_{{ loop.index }}">
+                                            {{ initiative.title }}
+                                        </label>
+                                        <p class="text-muted small mb-0">{{ initiative.description }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        
+                        <div class="selected-count mt-3 mb-4 text-muted">
+                            Selected <span id="selected-count">0</span> of 1-3 required options
+                        </div>
+                        
+                        <div class="d-flex justify-content-between">
+                            <button type="button" class="btn btn-secondary" onclick="window.location.href='{{ url_for('routes.setup') }}'">Previous</button>
+                            <button type="submit" class="btn btn-primary" id="submit-btn" disabled>Continue</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function validateSelection(checkbox) {
+    const checkboxes = document.querySelectorAll('input[name="selected_initiatives"]');
+    const selectedCount = document.querySelectorAll('input[name="selected_initiatives"]:checked').length;
+    const submitBtn = document.getElementById('submit-btn');
+    
+    // Update count display
+    document.getElementById('selected-count').textContent = selectedCount;
+    
+    // Disable checkboxes if limit reached
+    checkboxes.forEach(cb => {
+        if (!cb.checked && selectedCount >= 3) {
+            cb.disabled = true;
+        } else {
+            cb.disabled = false;
+        }
+    });
+    
+    // Enable/disable submit button
+    submitBtn.disabled = selectedCount < 1 || selectedCount > 3;
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    validateSelection();
+});
+</script>
+{% endblock %}

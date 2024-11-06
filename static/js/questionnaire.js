@@ -8,6 +8,19 @@ class Questionnaire {
         this.initialize();
     }
 
+    showError(message) {
+        const container = document.getElementById('questions-container');
+        if (container) {
+            container.innerHTML = `
+                <div class="alert alert-danger" role="alert">
+                    <i data-feather="alert-triangle" class="me-2"></i>
+                    ${message}
+                </div>
+            `;
+            feather.replace();
+        }
+    }
+
     async initialize() {
         try {
             const [questionsResponse, answersResponse] = await Promise.all([
@@ -71,10 +84,10 @@ class Questionnaire {
                     <div class="initiatives-container">
                         ${this.renderQuestionInput(question)}
                     </div>
-                    <div class="selected-count mt-3">
-                        Selected ${this.selectedOptions.size} of ${question.validation_rules?.min_count || 0}-${question.validation_rules?.max_count || 3} required options
+                    <div class="selected-count mt-3 text-muted">
+                        Selected ${this.selectedOptions.size} of ${question.validation_rules?.min_count || 1}-${question.validation_rules?.max_count || 3} required options
                     </div>
-                    <div class="invalid-feedback" id="validation-message">
+                    <div id="validation-message" class="mt-2 text-danger">
                         ${this.validationErrors.get(question.id) || ''}
                     </div>
                 </div>
@@ -82,51 +95,28 @@ class Questionnaire {
         `;
 
         this.addOptionClickHandlers();
-        feather.replace();
     }
 
     renderQuestionInput(question) {
         if (question.question_type === 'multiple_choice' && Array.isArray(question.options)) {
             return question.options.map(option => `
-                <div class="initiative-option ${this.selectedOptions.has(option.title) ? 'selected' : ''}" 
-                     data-option="${option.title}">
-                    <div class="initiative-header">
-                        <i data-feather="${option.icon}" class="initiative-icon"></i>
-                        <h6 class="initiative-title">${option.title}</h6>
+                <div class="initiative-option">
+                    <div class="d-flex align-items-center">
+                        <input type="checkbox" class="form-check-input me-2" 
+                               id="cb_${option.title.replace(/\s+/g, '_')}"
+                               ${this.selectedOptions.has(option.title) ? 'checked' : ''}
+                               ${this.selectedOptions.size >= 3 && !this.selectedOptions.has(option.title) ? 'disabled' : ''}>
+                        <label class="initiative-title" for="cb_${option.title.replace(/\s+/g, '_')}">
+                            ${option.title}
+                        </label>
+                        <i class="ms-2 text-info" data-feather="help-circle" 
+                           data-bs-toggle="tooltip" data-bs-placement="right" 
+                           title="${option.description}"></i>
                     </div>
-                    <p class="initiative-description">${option.description}</p>
                 </div>
             `).join('');
         }
         return '';
-    }
-
-    addOptionClickHandlers() {
-        const options = document.querySelectorAll('.initiative-option');
-        options.forEach(option => {
-            option.addEventListener('click', () => {
-                const optionValue = option.dataset.option;
-                const question = this.questions[this.currentIndex];
-                const maxCount = question.validation_rules?.max_count || 3;
-                const minCount = question.validation_rules?.min_count || 1;
-
-                if (this.selectedOptions.has(optionValue)) {
-                    option.classList.remove('selected');
-                    this.selectedOptions.delete(optionValue);
-                } else if (this.selectedOptions.size < maxCount) {
-                    option.classList.add('selected');
-                    this.selectedOptions.add(optionValue);
-                }
-
-                this.validateCurrentAnswer();
-                
-                // Update the selected count display
-                const countElement = document.querySelector('.selected-count');
-                if (countElement) {
-                    countElement.textContent = `Selected ${this.selectedOptions.size} of ${minCount}-${maxCount} required options`;
-                }
-            });
-        });
     }
 
     async validateCurrentAnswer() {
@@ -161,7 +151,6 @@ class Questionnaire {
                     this.validationErrors.set(question.id, result.message);
                     const feedback = document.getElementById('validation-message');
                     if (feedback) {
-                        feedback.style.display = 'block';
                         feedback.textContent = result.message;
                     }
                 }
@@ -175,65 +164,56 @@ class Questionnaire {
         }
     }
 
-    showValidationError(questionId) {
-        const message = this.validationErrors.get(questionId);
-        const feedback = document.getElementById('validation-message');
-        if (feedback) {
-            feedback.textContent = message;
-            feedback.style.display = 'block';
-        }
-    }
+    addOptionClickHandlers() {
+        // Initialize tooltips
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+        const tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl)
+        });
 
-    showControls() {
-        const controls = document.getElementById('navigation-controls');
-        const prevBtn = document.getElementById('prev-btn');
-        const nextBtn = document.getElementById('next-btn');
-        const submitBtn = document.getElementById('submit-btn');
+        // Replace Feather icons
+        feather.replace();
 
-        if (!controls || !prevBtn || !nextBtn || !submitBtn) return;
+        // Add click handlers for checkboxes
+        const checkboxes = document.querySelectorAll('.initiative-option input[type="checkbox"]');
+        checkboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', async (event) => {
+                const optionTitle = event.target.id.replace('cb_', '').replace(/_/g, ' ');
+                if (event.target.checked) {
+                    if (this.selectedOptions.size < 3) {
+                        this.selectedOptions.add(optionTitle);
+                    } else {
+                        event.target.checked = false;
+                        return;
+                    }
+                } else {
+                    this.selectedOptions.delete(optionTitle);
+                }
 
-        controls.classList.remove('d-none');
-        prevBtn.disabled = this.currentIndex === 0;
-        nextBtn.classList.toggle('d-none', this.currentIndex === this.questions.length - 1);
-        submitBtn.classList.toggle('d-none', this.currentIndex !== this.questions.length - 1);
+                // Update disabled state of other checkboxes
+                checkboxes.forEach(cb => {
+                    if (!cb.checked) {
+                        cb.disabled = this.selectedOptions.size >= 3;
+                    }
+                });
 
-        this.setupEventListeners();
-    }
-
-    setupEventListeners() {
-        const prevBtn = document.getElementById('prev-btn');
-        const nextBtn = document.getElementById('next-btn');
-        const submitBtn = document.getElementById('submit-btn');
-
-        if (prevBtn) prevBtn.onclick = () => this.previousQuestion();
-        if (nextBtn) nextBtn.onclick = () => this.nextQuestion();
-        if (submitBtn) submitBtn.onclick = () => this.submitQuestionnaire();
-    }
-
-    async previousQuestion() {
-        if (this.currentIndex > 0) {
-            this.selectedOptions.clear();
-            const previousAnswer = this.answers.get(this.questions[this.currentIndex - 1].id);
-            if (Array.isArray(previousAnswer)) {
-                previousAnswer.forEach(option => this.selectedOptions.add(option));
-            }
-            this.currentIndex--;
-            this.renderQuestion();
-            this.showControls();
-        }
-    }
-
-    async nextQuestion() {
-        if (await this.validateCurrentAnswer()) {
-            this.selectedOptions.clear();
-            const nextAnswer = this.answers.get(this.questions[this.currentIndex + 1]?.id);
-            if (Array.isArray(nextAnswer)) {
-                nextAnswer.forEach(option => this.selectedOptions.add(option));
-            }
-            this.currentIndex++;
-            this.renderQuestion();
-            this.showControls();
-        }
+                try {
+                    await this.validateCurrentAnswer();
+                } catch (error) {
+                    console.error('Error handling checkbox change:', error);
+                    this.showError('Failed to save your selection. Please try again.');
+                }
+                
+                // Update the selected count display
+                const countElement = document.querySelector('.selected-count');
+                if (countElement) {
+                    const question = this.questions[this.currentIndex];
+                    const minCount = question.validation_rules?.min_count || 1;
+                    const maxCount = question.validation_rules?.max_count || 3;
+                    countElement.textContent = `Selected ${this.selectedOptions.size} of ${minCount}-${maxCount} required options`;
+                }
+            });
+        });
     }
 
     updateProgress(progress) {
@@ -249,66 +229,13 @@ class Questionnaire {
                         progressBar.setAttribute('aria-valuenow', data.progress);
                     }
                 })
-                .catch(error => console.error('Error updating progress:', error));
+                .catch(error => {
+                    console.error('Error updating progress:', error);
+                    this.showError('Failed to update progress. Please refresh the page.');
+                });
         } else {
             progressBar.style.width = `${progress}%`;
             progressBar.setAttribute('aria-valuenow', progress);
-        }
-    }
-
-    showError(message) {
-        const container = document.getElementById('questionnaire-container');
-        if (!container) return;
-
-        const existingErrors = container.querySelectorAll('.alert');
-        existingErrors.forEach(error => error.remove());
-
-        const errorDiv = document.createElement('div');
-        errorDiv.className = 'alert alert-danger alert-dismissible fade show';
-        errorDiv.innerHTML = `
-            <strong>Error:</strong> ${message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        `;
-        container.insertBefore(errorDiv, container.firstChild);
-    }
-
-    async submitQuestionnaire() {
-        if (await this.validateCurrentAnswer()) {
-            try {
-                const validateResponse = await fetch('/api/validate-answers');
-                if (!validateResponse.ok) {
-                    throw new Error('Failed to validate answers');
-                }
-
-                const validation = await validateResponse.json();
-                
-                if (!validation.is_valid) {
-                    const messages = validation.invalid_questions
-                        .map(q => `Question ${q.question_id}: ${q.message}`)
-                        .join('\n');
-                    this.showError('Please correct the following errors:\n' + messages);
-                    return;
-                }
-                
-                const response = await fetch('/api/generate-roadmap', {
-                    method: 'POST'
-                });
-
-                if (!response.ok) {
-                    throw new Error('Failed to generate roadmap');
-                }
-
-                const result = await response.json();
-                
-                if (result.status === 'success') {
-                    window.location.href = `https://docs.google.com/document/d/${result.doc_id}`;
-                } else {
-                    this.showError(result.message || 'Failed to generate roadmap. Please try again.');
-                }
-            } catch (error) {
-                console.error('Error submitting questionnaire:', error);
-                this.showError('An error occurred while generating the roadmap.');
-            }
         }
     }
 }

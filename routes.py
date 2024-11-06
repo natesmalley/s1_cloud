@@ -1,206 +1,275 @@
-from flask import Blueprint, render_template, jsonify, request
+from flask import Blueprint, render_template, jsonify, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 from extensions import db
-from models import Question, Response, Presentation, User
-from google_drive import GoogleDriveService
-import re
+from models import Question, Response, Presentation, User, Setup
 import json
 import logging
+from datetime import datetime
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 routes = Blueprint('routes', __name__)
-google_drive = GoogleDriveService()
-
-def validate_answer(question, answer):
-    """Validate answer based on question type and rules"""
-    if not answer:
-        return False, "Answer cannot be empty"
-        
-    if question.question_type == 'multiple_choice':
-        # Handle array of answers for multiple selection
-        answer_list = answer if isinstance(answer, list) else [answer]
-        
-        # Validate that all selected options are valid
-        if not all(opt in question.options for opt in answer_list):
-            return False, "Invalid option(s) selected"
-            
-        # Check exact_count validation rule
-        if question.validation_rules and 'exact_count' in question.validation_rules:
-            required_count = question.validation_rules['exact_count']
-            if len(answer_list) != required_count:
-                return False, f"Please select exactly {required_count} options"
-            
-    if question.validation_rules:
-        rules = question.validation_rules
-        if rules.get('min_length') and len(str(answer)) < rules['min_length']:
-            return False, f"Answer must be at least {rules['min_length']} characters long"
-            
-        if rules.get('max_length') and len(str(answer)) > rules['max_length']:
-            return False, f"Answer must not exceed {rules['max_length']} characters"
-            
-        if rules.get('pattern'):
-            if not re.match(rules['pattern'], str(answer)):
-                return False, "Answer format is invalid"
-                
-    return True, None
-
-def calculate_progress(user_id):
-    """Calculate user's progress through the questionnaire"""
-    try:
-        total_questions = Question.query.count()
-        answered_questions = Response.query.filter_by(
-            user_id=user_id,
-            is_valid=True
-        ).count()
-        
-        if total_questions == 0:
-            return 0
-            
-        progress = (answered_questions / total_questions) * 100
-        
-        # Update user's progress
-        user = User.query.get(user_id)
-        if user:
-            user.progress_percentage = progress
-            db.session.commit()
-        
-        return progress
-    except Exception as e:
-        logger.error(f"Error calculating progress: {str(e)}")
-        return 0
 
 @routes.route('/')
 def index():
     if current_user.is_authenticated:
-        return render_template('questionnaire.html')
+        # Check if setup is completed
+        setup = Setup.query.filter_by(user_id=current_user.id).first()
+        if setup:
+            return redirect(url_for('routes.initiatives'))
+        return redirect(url_for('routes.setup'))
     return render_template('index.html')
 
-@routes.route('/setup')
+@routes.route('/setup', methods=['GET', 'POST'])
 @login_required
 def setup():
+    if request.method == 'POST':
+        try:
+            setup_info = Setup(
+                user_id=current_user.id,
+                advisor_name=request.form['advisor_name'],
+                advisor_email=request.form['advisor_email'],
+                leader_name=request.form['leader_name'],
+                leader_email=request.form['leader_email'],
+                leader_employer=request.form['leader_employer']
+            )
+            db.session.add(setup_info)
+            db.session.commit()
+            return redirect(url_for('routes.initiatives'))
+        except Exception as e:
+            logger.error(f"Error saving setup information: {str(e)}")
+            db.session.rollback()
+            return render_template('setup.html', error="Failed to save setup information. Please try again.")
+    
+    # Check if setup already exists
+    existing_setup = Setup.query.filter_by(user_id=current_user.id).first()
+    if existing_setup:
+        return redirect(url_for('routes.initiatives'))
+        
     return render_template('setup.html')
+
+@routes.route('/initiatives', methods=['GET', 'POST'])
+@login_required
+def initiatives():
+    initiatives = [
+        {
+            'title': 'Cloud Adoption and Business Alignment',
+            'description': 'Ensure cloud adoption is in line with the organization\'s overarching business objectives, providing a secure and compliant foundation for business activities.'
+        },
+        {
+            'title': 'Achieving Key Business Outcomes',
+            'description': 'Drive security practices that directly support business outcomes, ensuring risk mitigation efforts contribute positively to overall business performance.'
+        },
+        {
+            'title': 'Maximizing ROI for Cloud Security',
+            'description': 'Evaluate cloud security investments to maximize return on investment, ensuring that security measures are both effective and financially sustainable.'
+        },
+        {
+            'title': 'Integration of Cloud Security with Business Strategy',
+            'description': 'Integrate cloud security practices within the broader IT and business strategies to ensure cohesive growth, operational efficiency, and security posture.'
+        },
+        {
+            'title': 'Driving Innovation and Value Delivery',
+            'description': 'Facilitate secure innovation by embedding proactive risk management into cloud projects, enabling business opportunities while minimizing risk.'
+        },
+        {
+            'title': 'Supporting Digital Transformation',
+            'description': 'Leverage cloud security to support digital transformation initiatives, ensuring that new technologies and processes are securely adopted.'
+        },
+        {
+            'title': 'Balancing Rapid Adoption with Compliance',
+            'description': 'Achieve a balance between rapidly adopting cloud technologies and maintaining compliance, ensuring security does not hinder business agility.'
+        }
+    ]
+    
+    # Get previously selected initiatives
+    response = Response.query.filter_by(user_id=current_user.id, question_id=1).first()
+    selected = json.loads(response.answer) if response else []
+    
+    return render_template('business_initiatives.html', 
+                         initiatives=initiatives,
+                         selected=selected)
+
+@routes.route('/save-initiatives', methods=['POST'])
+@login_required
+def save_initiatives():
+    selected = request.form.getlist('selected_initiatives')
+    
+    if not 1 <= len(selected) <= 3:
+        flash('Please select between 1 and 3 initiatives.', 'error')
+        return redirect(url_for('routes.initiatives'))
+    
+    try:
+        response = Response.query.filter_by(
+            user_id=current_user.id,
+            question_id=1
+        ).first()
+        
+        if response:
+            response.answer = json.dumps(selected)
+            response.is_valid = True
+        else:
+            response = Response(
+                user_id=current_user.id,
+                question_id=1,
+                answer=json.dumps(selected),
+                is_valid=True
+            )
+            db.session.add(response)
+            
+        db.session.commit()
+        return redirect(url_for('routes.questionnaire'))
+        
+    except Exception as e:
+        db.session.rollback()
+        flash('Failed to save initiatives. Please try again.', 'error')
+        return redirect(url_for('routes.initiatives'))
 
 @routes.route('/questionnaire')
 @login_required
 def questionnaire():
-    return render_template('questionnaire.html')
-
-@routes.route('/api/questions')
-@login_required
-def get_questions():
-    try:
-        questions = Question.query.order_by(Question.order).all()
-        if not questions:
-            logger.warning("No questions found in database")
-            
-        return jsonify([{
-            'id': q.id,
-            'text': q.text,
-            'type': q.question_type,
-            'options': q.options,
-            'required': q.required,
-            'validation_rules': q.validation_rules
-        } for q in questions])
-    except Exception as e:
-        logger.error(f"Error fetching questions: {str(e)}")
-        return jsonify({'error': 'Failed to load questions'}), 500
-
-@routes.route('/api/saved-answers')
-@login_required
-def get_saved_answers():
-    try:
-        responses = Response.query.filter_by(
-            user_id=current_user.id,
-            is_valid=True
-        ).all()
-        return jsonify([{
-            'question_id': r.question_id,
-            'answer': r.answer
-        } for r in responses])
-    except Exception as e:
-        logger.error(f"Error fetching saved answers: {str(e)}")
-        return jsonify({'error': 'Failed to load saved answers'}), 500
-
-@routes.route('/api/submit-answer', methods=['POST'])
-@login_required
-def submit_answer():
-    try:
-        data = request.json
-        logger.info(f"Received answer submission: {data}")
+    # Check if setup is completed
+    setup = Setup.query.filter_by(user_id=current_user.id).first()
+    if not setup:
+        return redirect(url_for('routes.setup'))
         
-        if not data or 'question_id' not in data or 'answer' not in data:
+    # Get selected initiatives
+    initiatives_response = Response.query.filter_by(
+        user_id=current_user.id,
+        question_id=1
+    ).first()
+    
+    if not initiatives_response:
+        return redirect(url_for('routes.initiatives'))
+    
+    selected_initiatives = json.loads(initiatives_response.answer)
+    
+    # Get questions for selected initiatives
+    questions = {}
+    for initiative in selected_initiatives:
+        questions[initiative] = Question.query.filter_by(
+            strategic_goal=initiative
+        ).order_by(Question.order).all()
+    
+    # Get saved answers
+    saved_answers = {}
+    answers = Response.query.filter_by(
+        user_id=current_user.id,
+        is_valid=True
+    ).all()
+    
+    for answer in answers:
+        if answer.answer.isdigit():  # Check if it's a questionnaire answer
+            saved_answers[answer.question_id] = int(answer.answer)
+    
+    # Calculate progress
+    progress = calculate_progress()
+    
+    return render_template('questionnaire.html',
+                         selected_initiatives=selected_initiatives,
+                         questions=questions,
+                         saved_answers=saved_answers,
+                         progress=progress)
+
+@routes.route('/api/save-answer', methods=['POST'])
+@login_required
+def save_answer():
+    try:
+        data = request.get_json()
+        question_id = data.get('question_id')
+        answer = data.get('answer')
+        
+        if question_id is None or answer is None:
             return jsonify({
                 'status': 'error',
                 'message': 'Missing required fields'
             }), 400
-        
-        question = Question.query.get(data['question_id'])
-        if not question:
+            
+        # Validate answer (should be between 0-4 for our 5-point scale)
+        if not isinstance(answer, int) or not 0 <= answer <= 4:
             return jsonify({
                 'status': 'error',
-                'message': 'Question not found'
-            }), 404
-        
-        # Validate answer
-        is_valid, validation_message = validate_answer(question, data['answer'])
-        
-        # Log validation results
-        logger.info(f"Validation result for question {question.id}: valid={is_valid}, message={validation_message}")
-        
-        if not is_valid and question.required:
-            return jsonify({
-                'status': 'success',
-                'is_valid': False,
-                'message': validation_message
-            }), 200  # Return 200 for validation failures
-        
-        # Update or create response
+                'message': 'Invalid answer value'
+            }), 400
+            
+        # Save or update response
         response = Response.query.filter_by(
             user_id=current_user.id,
-            question_id=data['question_id']
+            question_id=question_id
         ).first()
         
         if response:
-            response.answer = json.dumps(data['answer']) if isinstance(data['answer'], list) else data['answer']
-            response.is_valid = is_valid
-            response.validation_message = validation_message
+            response.answer = str(answer)
+            response.is_valid = True
         else:
             response = Response(
                 user_id=current_user.id,
-                question_id=data['question_id'],
-                answer=json.dumps(data['answer']) if isinstance(data['answer'], list) else data['answer'],
-                is_valid=is_valid,
-                validation_message=validation_message
+                question_id=question_id,
+                answer=str(answer),
+                is_valid=True
             )
             db.session.add(response)
-        
+            
         db.session.commit()
         
-        # Update progress
-        progress = calculate_progress(current_user.id)
+        # Calculate new progress
+        progress = calculate_progress()
         
         return jsonify({
             'status': 'success',
-            'progress': progress,
-            'is_valid': is_valid,
-            'message': validation_message
+            'progress': progress
         })
+        
     except Exception as e:
-        logger.error(f"Error submitting answer: {str(e)}")
+        logger.error(f"Error saving answer: {str(e)}")
         db.session.rollback()
         return jsonify({
             'status': 'error',
-            'message': str(e)
+            'message': 'Failed to save answer'
         }), 500
+
+def calculate_progress():
+    """Calculate user's progress through the questionnaire"""
+    try:
+        # Get selected initiatives
+        initiatives_response = Response.query.filter_by(
+            user_id=current_user.id,
+            question_id=1
+        ).first()
+        
+        if not initiatives_response:
+            return 0
+            
+        selected_initiatives = json.loads(initiatives_response.answer)
+        
+        # Get total questions for selected initiatives
+        total_questions = Question.query.filter(
+            Question.strategic_goal.in_(selected_initiatives)
+        ).count()
+        
+        if total_questions == 0:
+            return 0
+        
+        # Get number of valid answers (excluding initiatives selection)
+        answered_questions = Response.query.filter(
+            Response.user_id == current_user.id,
+            Response.is_valid == True,
+            Response.question_id != 1  # Exclude initiatives selection
+        ).count()
+        
+        return (answered_questions / total_questions) * 100
+        
+    except Exception as e:
+        logger.error(f"Error calculating progress: {str(e)}")
+        return 0
 
 @routes.route('/api/progress')
 @login_required
 def get_progress():
     try:
-        progress = calculate_progress(current_user.id)
+        progress = calculate_progress()
         return jsonify({
             'progress': progress
         })
@@ -209,91 +278,3 @@ def get_progress():
         return jsonify({
             'error': 'Failed to get progress'
         }), 500
-
-@routes.route('/api/validate-answers')
-@login_required
-def validate_all_answers():
-    try:
-        questions = Question.query.all()
-        responses = Response.query.filter_by(user_id=current_user.id).all()
-        answered_questions = {r.question_id: r for r in responses}
-        
-        invalid_questions = []
-        for question in questions:
-            if question.required and question.id not in answered_questions:
-                invalid_questions.append({
-                    'question_id': question.id,
-                    'message': 'This question requires an answer'
-                })
-            elif question.id in answered_questions:
-                response = answered_questions[question.id]
-                is_valid, message = validate_answer(question, response.answer)
-                if not is_valid and question.required:
-                    invalid_questions.append({
-                        'question_id': question.id,
-                        'message': message
-                    })
-        
-        return jsonify({
-            'is_valid': len(invalid_questions) == 0,
-            'invalid_questions': invalid_questions
-        })
-    except Exception as e:
-        logger.error(f"Error validating all answers: {str(e)}")
-        return jsonify({
-            'error': 'Failed to validate answers'
-        }), 500
-
-@routes.route('/api/generate-roadmap', methods=['POST'])
-@login_required
-def generate_roadmap():
-    try:
-        # Verify all required questions are answered and valid
-        validation_result = validate_all_answers()
-        validation_data = validation_result.get_json()
-        
-        if not validation_data['is_valid']:
-            return jsonify({
-                'status': 'error',
-                'message': 'Please answer all required questions correctly before generating the roadmap',
-                'invalid_questions': validation_data['invalid_questions']
-            }), 400
-        
-        responses = Response.query.filter_by(
-            user_id=current_user.id,
-            is_valid=True
-        ).all()
-        
-        content = generate_roadmap_content(responses)
-        
-        doc_id = google_drive.create_presentation(
-            current_user.credentials,
-            f"Roadmap for {current_user.username}",
-            content
-        )
-        
-        if doc_id:
-            presentation = Presentation(
-                user_id=current_user.id,
-                google_doc_id=doc_id
-            )
-            db.session.add(presentation)
-            db.session.commit()
-            return jsonify({'status': 'success', 'doc_id': doc_id})
-        
-        return jsonify({
-            'status': 'error',
-            'message': 'Failed to create presentation'
-        }), 500
-    except Exception as e:
-        logger.error(f"Error generating roadmap: {str(e)}")
-        return jsonify({
-            'status': 'error',
-            'message': 'An error occurred while generating the roadmap'
-        }), 500
-
-def generate_roadmap_content(responses):
-    content = "# Strategic Roadmap\n\n"
-    content += "## Executive Summary\n"
-    # Add more sections based on responses
-    return content

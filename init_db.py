@@ -1,6 +1,7 @@
 from app import create_app
 from extensions import db
-from models import Question, User
+from models import Question
+import csv
 import logging
 
 # Configure logging
@@ -8,48 +9,29 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def init_questions():
-    questions = [
-        {
-            'text': 'Please select your top Business Initiatives in Cloud Security',
-            'question_type': 'multiple_choice',
-            'options': [
-                'Cloud Adoption and Business Alignment',
-                'Achieving Key Business Outcomes',
-                'Maximizing ROI for Cloud Security',
-                'Integration of Cloud Security with Business Strategy',
-                'Driving Innovation and Value Delivery',
-                'Supporting Digital Transformation',
-                'Balancing Rapid Adoption with Compliance'
-            ],
-            'required': True,
-            'validation_rules': {'min_count': 1, 'max_count': 3},
-            'order': 1
-        }
-    ]
-
-    try:
-        # First clear existing questions
-        Question.query.delete()
-        db.session.commit()
-        
-        # Add new questions
-        for q_data in questions:
-            q = Question(
-                text=q_data['text'],
-                question_type=q_data['question_type'],
-                options=q_data['options'],
-                required=q_data.get('required', True),
-                validation_rules=q_data.get('validation_rules', {}),
-                order=q_data.get('order', 0)
+    # Clear existing questions
+    Question.query.delete()
+    
+    # Read CSV and create questions
+    with open('questions.csv', 'r') as file:
+        reader = csv.DictReader(file)
+        for row in reader:
+            if not row['Strategic Goal'] or row['Strategic Goal'].startswith('**'):
+                continue
+                
+            options = [opt.strip() for opt in row['Multiple Choice Answers'].split(',')]
+            
+            question = Question(
+                strategic_goal=row['Strategic Goal'],
+                major_cnapp_area=row['Major CNAPP Area'],
+                text=row['Guided Questions'],
+                options=options,
+                weighting_score=row['Weighting Score (Maturity)'],
+                order=0
             )
-            db.session.add(q)
-        
-        db.session.commit()
-        logger.info("Questions initialized successfully")
-    except Exception as e:
-        logger.error(f"Error initializing questions: {e}")
-        db.session.rollback()
-        raise
+            db.session.add(question)
+    
+    db.session.commit()
 
 def clear_and_init_db():
     try:
@@ -61,15 +43,6 @@ def clear_and_init_db():
         db.create_all()
         # Initialize questions
         init_questions()
-        
-        # Create test user
-        test_user = User(
-            id=1,
-            username="Test User",
-            email="test@example.com"
-        )
-        db.session.add(test_user)
-        db.session.commit()
         
         logger.info("Database initialized successfully!")
     except Exception as e:

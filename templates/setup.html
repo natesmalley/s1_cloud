@@ -1,19 +1,45 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container py-5">
+<div class="container py-4">
     <div class="row justify-content-center">
-        <div class="col-md-8">
+        <div class="col-lg-8">
             <div class="card">
                 <div class="card-body">
-                    <h2 class="card-title mb-4">Welcome, {{ current_user.username }}!</h2>
-                    <p class="lead">You're all set to start generating your roadmap.</p>
-                    
-                    <div class="d-grid gap-3">
-                        <a href="{{ url_for('routes.questionnaire') }}" class="btn btn-primary btn-lg">
-                            Start Questionnaire
-                        </a>
-                    </div>
+                    <h2 class="mb-4">Setup Information</h2>
+                    <form method="POST" action="{{ url_for('routes.setup') }}">
+                        <div class="mb-3">
+                            <h4 class="mb-3">Security Advisor Information</h4>
+                            <div class="mb-3">
+                                <label class="form-label">Name</label>
+                                <input type="text" class="form-control" name="advisor_name" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Email</label>
+                                <input type="email" class="form-control" name="advisor_email" required>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <h4 class="mb-3">Security Leader Information</h4>
+                            <div class="mb-3">
+                                <label class="form-label">Name</label>
+                                <input type="text" class="form-control" name="leader_name" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Email</label>
+                                <input type="email" class="form-control" name="leader_email" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Employer</label>
+                                <input type="text" class="form-control" name="leader_employer" required>
+                            </div>
+                        </div>
+                        
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary">Continue to Assessment</button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>

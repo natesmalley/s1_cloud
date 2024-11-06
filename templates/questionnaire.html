@@ -1,26 +1,99 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-md-8">
-        <div id="questionnaire-container">
-            <h2 class="mb-4">Strategic Assessment Questionnaire</h2>
-            <div id="questions-container"></div>
-            <div id="navigation-controls" class="mt-4 d-none">
-                <button id="prev-btn" class="btn btn-secondary">Previous</button>
-                <button id="next-btn" class="btn btn-primary">Next</button>
-                <button id="submit-btn" class="btn btn-success d-none">Generate Roadmap</button>
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <h2 class="mb-4">Strategic Assessment</h2>
+            
+            {% for initiative in selected_initiatives %}
+            <div class="initiative-section mb-5">
+                <h3 class="mb-4">{{ initiative }}</h3>
+                
+                {% for question in questions[initiative] %}
+                <div class="question-card mb-4">
+                    <div class="card bg-dark">
+                        <div class="card-body">
+                            <h5 class="card-title mb-3">{{ question.text }}</h5>
+                            <p class="text-muted small mb-3">Area: {{ question.major_cnapp_area }}</p>
+                            
+                            <div class="options-list">
+                                {% for option in question.options %}
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="radio" 
+                                           name="q_{{ question.id }}" 
+                                           id="q{{ question.id }}_opt{{ loop.index }}"
+                                           value="{{ loop.index0 }}"
+                                           {% if saved_answers.get(question.id) == loop.index0 %}checked{% endif %}
+                                           onchange="saveAnswer({{ question.id }}, this.value)">
+                                    <label class="form-check-label" for="q{{ question.id }}_opt{{ loop.index }}">
+                                        {{ option }}
+                                    </label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            
+                            <div class="validation-message text-danger mt-2" id="validation_{{ question.id }}"></div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
             </div>
-        </div>
-        <div id="progress-container" class="mt-4">
-            <div class="progress">
-                <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+            {% endfor %}
+            
+            <div class="d-flex justify-content-between mt-4">
+                <a href="{{ url_for('routes.initiatives') }}" class="btn btn-secondary">Back to Initiatives</a>
+                <button type="button" class="btn btn-primary" onclick="window.location.href='{{ url_for('routes.generate_roadmap') }}'">Generate Roadmap</button>
             </div>
         </div>
     </div>
 </div>
-{% endblock %}
 
-{% block scripts %}
-<script src="{{ url_for('static', filename='js/questionnaire.js') }}"></script>
+<div class="progress-container fixed-bottom p-3 bg-dark border-top">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col">
+                <div class="progress" style="height: 10px;">
+                    <div class="progress-bar bg-primary" role="progressbar" style="width: {{ progress }}%" aria-valuenow="{{ progress }}" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+            </div>
+            <div class="col-auto">
+                <span class="text-muted">{{ progress|round }}% Complete</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function saveAnswer(questionId, value) {
+    fetch('/api/save-answer', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            question_id: questionId,
+            answer: parseInt(value)
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        const validationElement = document.getElementById(`validation_${questionId}`);
+        if (data.status === 'success') {
+            validationElement.textContent = '';
+            // Update progress bar
+            const progressBar = document.querySelector('.progress-bar');
+            progressBar.style.width = `${data.progress}%`;
+            progressBar.setAttribute('aria-valuenow', data.progress);
+            document.querySelector('.progress-container .text-muted').textContent = 
+                `${Math.round(data.progress)}% Complete`;
+        } else {
+            validationElement.textContent = data.message;
+        }
+    })
+    .catch(error => {
+        console.error('Error saving answer:', error);
+    });
+}
+</script>
 {% endblock %}

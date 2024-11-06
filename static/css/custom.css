@@ -1,4 +1,9 @@
 /* Custom styles to complement Bootstrap theme */
+:root {
+    --s1-dark-blue: #1B1B27;
+    --s1-purple: #5046E4;
+}
+
 .progress {
     height: 0.5rem;
     background-color: var(--bs-gray-700);
@@ -9,43 +14,69 @@
     transition: width 0.3s ease;
 }
 
-.card {
-    border-color: var(--bs-gray-700);
+.question-card {
+    background: var(--s1-dark-blue);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 2rem;
 }
 
-.form-check-input:checked {
-    background-color: var(--bs-info);
-    border-color: var(--bs-info);
+.question-title {
+    color: white;
+    font-size: 1.25rem;
+    font-weight: 500;
 }
 
-#navigation-controls {
-    display: flex;
-    gap: 1rem;
-    justify-content: center;
+.selected-count {
+    color: var(--bs-gray-400);
+    font-size: 0.9rem;
 }
 
-.question-container {
-    min-height: 200px;
+.btn-primary {
+    background-color: #5046E4;
+    border: none;
 }
 
-.initiatives-container {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
+.btn-primary:hover {
+    background-color: #6357FF;
 }
 
-.stCheckbox {
-    margin-right: 1rem;
+.btn-secondary {
+    background-color: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-.stMarkdown {
-    margin-bottom: 0.5rem;
+.btn-secondary:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.3);
 }
 
-/* Style for disabled checkboxes */
-.stCheckbox:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+.initiative-item {
+    transition: all 0.2s ease;
+    background-color: var(--s1-dark-blue);
+}
+
+.initiative-item:hover {
+    border-color: var(--s1-purple) !important;
+}
+
+.initiative-item .form-check-input:checked {
+    background-color: var(--s1-purple);
+    border-color: var(--s1-purple);
+}
+
+.initiative-item .form-check-input:checked ~ div label {
+    color: var(--s1-purple);
+}
+
+.initiative-title {
+    font-weight: 500;
+}
+
+[data-feather="help-circle"] {
+    width: 16px;
+    height: 16px;
+    cursor: help;
 }
 
 .navbar-brand img {
@@ -55,4 +86,15 @@
 
 .navbar-brand:hover img {
     filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.4));
+}
+
+/* Style for disabled checkboxes */
+.form-check-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.form-check-input:checked {
+    background-color: var(--s1-purple);
+    border-color: var(--s1-purple);
 }
