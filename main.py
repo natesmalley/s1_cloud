@@ -65,7 +65,88 @@ def save_answer(selected_initiatives):
             db.session.rollback()
             return False, str(e)
 
-# ... [rest of the existing functions remain the same] ...
+def show_strategic_goals():
+    st.write('### Please select your top Business Initiatives in Cloud Security (select 1-3)')
+    
+    with flask_app.app_context():
+        question = Question.query.get(1)
+        if not question:
+            st.error("Failed to load strategic goals question")
+            return
+            
+        response = Response.query.filter_by(
+            user_id=st.session_state.user_id,
+            question_id=1
+        ).first()
+        
+        selected_initiatives = []
+        for option in question.options:
+            if st.checkbox(
+                option['title'],
+                help=option['description'],
+                key=f"strategic_opt_{option['title']}"
+            ):
+                selected_initiatives.append(option['title'])
+        
+        if selected_initiatives:
+            is_valid, message = validate_answer(selected_initiatives)
+            if is_valid:
+                success, error = save_answer(selected_initiatives)
+                if not success:
+                    st.error(f"Failed to save answer: {error}")
+            else:
+                st.warning(message)
+
+def show_questionnaire():
+    st.header('Strategic Assessment Questionnaire')
+    st.markdown('---')
+    
+    with flask_app.app_context():
+        strategic_response = Response.query.filter_by(
+            user_id=st.session_state.user_id,
+            question_id=1
+        ).first()
+        
+        if not strategic_response:
+            show_strategic_goals()
+        else:
+            selected_goals = json.loads(strategic_response.answer)
+            st.write("### Selected Business Initiatives:")
+            for goal in selected_goals:
+                st.write(f"- {goal}")
+            st.markdown("---")
+            
+            questions = Question.query.filter(
+                Question.parent_answer.in_(selected_goals)
+            ).order_by(Question.order).all()
+            
+            for question in questions:
+                st.subheader(question.text)
+                response = Response.query.filter_by(
+                    user_id=st.session_state.user_id,
+                    question_id=question.id
+                ).first()
+                
+                current_answer = json.loads(response.answer) if response and response.answer else []
+                
+                for i, option in enumerate(question.options):
+                    key = f"q{question.id}_opt{i}"
+                    if st.checkbox(
+                        option['title'],
+                        value=option['title'] in current_answer,
+                        help=option['description'],
+                        key=key
+                    ):
+                        if question.id not in [r.question_id for r in Response.query.filter_by(user_id=st.session_state.user_id).all()]:
+                            save_answer([option['title']])
+
+def main():
+    # Initialize session state
+    if 'user_id' not in st.session_state:
+        st.session_state.user_id = 1  # Using a default user ID for testing
+    
+    # Show questionnaire
+    show_questionnaire()
 
 if __name__ == '__main__':
     with flask_app.app_context():
