@@ -207,7 +207,7 @@ def callback():
         next_page = request.args.get('next')
         if next_page:
             return redirect(next_page)
-        return redirect(url_for("routes.index"))
+        return redirect(url_for('routes.setup'))
 
     except OAuth2Error as e:
         error_details = {

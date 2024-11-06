@@ -17,14 +17,20 @@ def index():
     if current_user.is_authenticated:
         # Check if setup is completed
         setup = Setup.query.filter_by(user_id=current_user.id).first()
-        if setup:
-            return redirect(url_for('routes.initiatives'))
-        return redirect(url_for('routes.setup'))
+        if not setup:
+            # Redirect to setup if not completed
+            return redirect(url_for('routes.setup'))
+        return redirect(url_for('routes.initiatives'))
     return render_template('index.html')
 
 @routes.route('/setup', methods=['GET', 'POST'])
 @login_required
 def setup():
+    # Check if setup already exists
+    existing_setup = Setup.query.filter_by(user_id=current_user.id).first()
+    if existing_setup:
+        return redirect(url_for('routes.initiatives'))
+    
     if request.method == 'POST':
         try:
             setup_info = Setup(
@@ -37,17 +43,13 @@ def setup():
             )
             db.session.add(setup_info)
             db.session.commit()
+            flash('Setup completed successfully!', 'success')
             return redirect(url_for('routes.initiatives'))
         except Exception as e:
             logger.error(f"Error saving setup information: {str(e)}")
             db.session.rollback()
-            return render_template('setup.html', error="Failed to save setup information. Please try again.")
+            flash('Failed to save setup information. Please try again.', 'error')
     
-    # Check if setup already exists
-    existing_setup = Setup.query.filter_by(user_id=current_user.id).first()
-    if existing_setup:
-        return redirect(url_for('routes.initiatives'))
-        
     return render_template('setup.html')
 
 @routes.route('/initiatives', methods=['GET', 'POST'])
@@ -218,6 +220,13 @@ def save_answer():
             return jsonify({
                 'status': 'error',
                 'message': 'Missing required fields'
+            }), 400
+        
+        # Validate answer (should be between 0-4 for our 5-point scale)
+        if not isinstance(answer, int) or not 0 <= answer <= 4:
+            return jsonify({
+                'status': 'error',
+                'message': 'Invalid answer value'
             }), 400
         
         # Save or update response
