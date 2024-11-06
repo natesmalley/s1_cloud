@@ -1,3 +1,4 @@
+import logging
 from flask import Blueprint, render_template, jsonify, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 from extensions import db
@@ -5,10 +6,13 @@ from models import Question, Response, Presentation, User, Setup, Initiative
 from google_drive import GoogleDriveService
 from functools import wraps
 import json
-import logging
 from datetime import datetime
 
-logging.basicConfig(level=logging.INFO)
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 routes = Blueprint('routes', __name__)
@@ -50,27 +54,27 @@ def index():
     if current_user.is_authenticated:
         setup = get_latest_setup(current_user.id)
         if setup:
-            initiatives_response = Response.query.filter_by(
-                setup_id=setup.id,
-                question_id=1
-            ).order_by(Response.timestamp.desc()).first()
-            
-            if initiatives_response:
-                return redirect(url_for('routes.questionnaire', initiative_index=0))
-            return redirect(url_for('routes.initiatives'))
+            try:
+                initiatives_response = Response.query.filter_by(
+                    setup_id=setup.id,
+                    question_id=1
+                ).order_by(Response.timestamp.desc()).first()
+                
+                if initiatives_response:
+                    return redirect(url_for('routes.questionnaire', initiative_index=0))
+                return redirect(url_for('routes.initiatives'))
+            except Exception as e:
+                logger.error(f"Error in index route: {str(e)}")
+                flash('An error occurred. Please try again.', 'error')
+                return render_template('index.html')
         return redirect(url_for('routes.setup'))
     return render_template('index.html')
 
 @routes.route('/setup', methods=['GET', 'POST'])
 @login_required
 def setup():
-    existing_setup = get_latest_setup(current_user.id)
-    if existing_setup and request.method == 'GET':
-        flash('Setup already completed.', 'info')
-        return redirect(url_for('routes.initiatives'))
-
-    if request.method == 'POST':
-        try:
+    try:
+        if request.method == 'POST':
             required_fields = ['advisor_name', 'advisor_email', 'leader_name', 
                              'leader_email', 'leader_employer']
             if not all(field in request.form for field in required_fields):
@@ -90,10 +94,15 @@ def setup():
             db.session.commit()
             flash('Setup completed successfully!', 'success')
             return redirect(url_for('routes.initiatives'))
-        except Exception as e:
-            logger.error(f"Error saving setup information: {str(e)}")
-            db.session.rollback()
-            flash('Failed to save setup information. Please try again.', 'error')
+
+        existing_setup = get_latest_setup(current_user.id)
+        if existing_setup:
+            return render_template('setup.html', setup=existing_setup)
+            
+    except Exception as e:
+        logger.error(f"Error in setup: {str(e)}")
+        db.session.rollback()
+        flash('Failed to save setup information. Please try again.', 'error')
     
     return render_template('setup.html')
 
@@ -104,9 +113,9 @@ def initiatives():
     if setup_redirect:
         return setup_redirect
     
-    setup = get_latest_setup(current_user.id)
-    
     try:
+        setup = get_latest_setup(current_user.id)
+        
         initiatives = Initiative.query.order_by(Initiative.order).all()
         if not initiatives:
             flash('No initiatives available. Please contact an administrator.', 'error')
@@ -139,7 +148,7 @@ def initiatives():
                 response = Response.query.filter_by(
                     setup_id=setup.id,
                     question_id=1
-                ).order_by(Response.timestamp.desc()).first()
+                ).first()
                 
                 if response:
                     response.answer = json.dumps(selected)
@@ -174,11 +183,11 @@ def initiatives():
 @routes.route('/questionnaire')
 @routes.route('/questionnaire/<int:initiative_index>')
 @login_required
-def questionnaire(initiative_index=None):
+def questionnaire(initiative_index=0):
     try:
         setup = get_latest_setup(current_user.id)
         if not setup:
-            flash('Setup not found', 'error')
+            flash('Please complete the setup first.', 'info')
             return redirect(url_for('routes.setup'))
             
         initiatives_response = Response.query.filter_by(
@@ -186,17 +195,23 @@ def questionnaire(initiative_index=None):
             question_id=1
         ).first()
         
-        if not initiatives_response:
+        if not initiatives_response or not initiatives_response.answer:
             flash('Please select your initiatives first.', 'info')
             return redirect(url_for('routes.initiatives'))
             
-        selected_initiatives = json.loads(initiatives_response.answer)
+        try:
+            selected_initiatives = json.loads(initiatives_response.answer)
+            if not isinstance(selected_initiatives, list) or not selected_initiatives:
+                flash('Invalid initiatives data. Please select again.', 'error')
+                return redirect(url_for('routes.initiatives'))
+        except json.JSONDecodeError:
+            flash('Invalid initiatives data. Please select again.', 'error')
+            return redirect(url_for('routes.initiatives'))
         
-        index = initiative_index if initiative_index is not None else 0
-        if index >= len(selected_initiatives):
+        if initiative_index >= len(selected_initiatives):
             return redirect(url_for('routes.generate_roadmap'))
             
-        current_initiative = selected_initiatives[index]
+        current_initiative = selected_initiatives[initiative_index]
         questions = Question.query.filter_by(
             strategic_goal=current_initiative
         ).order_by(Question.order).all()
@@ -230,8 +245,8 @@ def questionnaire(initiative_index=None):
                            questions={current_initiative: questions},
                            saved_answers=saved_answers,
                            progress=progress,
-                           prev_url=url_for('routes.initiatives') if index == 0 else url_for('routes.questionnaire', initiative_index=index-1),
-                           next_url=url_for('routes.questionnaire', initiative_index=index+1) if index < len(selected_initiatives)-1 else url_for('routes.generate_roadmap'))
+                           prev_url=url_for('routes.initiatives') if initiative_index == 0 else url_for('routes.questionnaire', initiative_index=initiative_index-1),
+                           next_url=url_for('routes.questionnaire', initiative_index=initiative_index+1) if initiative_index < len(selected_initiatives)-1 else None)
                            
     except Exception as e:
         logger.error(f"Error loading questionnaire: {str(e)}")
@@ -241,134 +256,106 @@ def questionnaire(initiative_index=None):
 @routes.route('/api/save-answer', methods=['POST'])
 @login_required
 def save_answer():
-    setup = get_latest_setup(current_user.id)
-    if not setup:
-        return jsonify({
-            'status': 'error',
-            'message': 'Setup not completed'
-        }), 403
-        
     try:
+        setup = get_latest_setup(current_user.id)
+        if not setup:
+            return jsonify({
+                'status': 'error',
+                'message': 'Setup not found'
+            }), 404
+
         data = request.get_json()
+        if not data:
+            return jsonify({
+                'status': 'error',
+                'message': 'No data provided'
+            }), 400
+
         question_id = data.get('question_id')
         answer = data.get('answer')
-        
+
         if question_id is None or answer is None:
             return jsonify({
                 'status': 'error',
-                'message': 'Missing required fields'
+                'message': 'Missing question_id or answer'
             }), 400
-        
+
+        # Validate question exists
+        question = Question.query.get(question_id)
+        if not question:
+            return jsonify({
+                'status': 'error',
+                'message': 'Question not found'
+            }), 404
+
+        # Get or create response
         response = Response.query.filter_by(
             setup_id=setup.id,
             question_id=question_id
-        ).order_by(Response.timestamp.desc()).first()
-        
+        ).first()
+
         if response:
             response.answer = json.dumps(answer)
             response.is_valid = True
+            response.timestamp = datetime.utcnow()
         else:
             response = Response(
                 setup_id=setup.id,
                 question_id=question_id,
                 answer=json.dumps(answer),
-                is_valid=True
+                is_valid=True,
+                timestamp=datetime.utcnow()
             )
             db.session.add(response)
-            
-        db.session.commit()
-        
+
+        try:
+            db.session.commit()
+        except Exception as e:
+            logger.error(f"Database error while saving answer: {str(e)}")
+            db.session.rollback()
+            return jsonify({
+                'status': 'error',
+                'message': 'Failed to save answer'
+            }), 500
+
+        # Calculate progress
         initiatives_response = Response.query.filter_by(
             setup_id=setup.id,
             question_id=1
-        ).order_by(Response.timestamp.desc()).first()
-        
+        ).first()
+
         if not initiatives_response:
             return jsonify({
                 'status': 'error',
-                'message': 'No initiatives selected'
-            }), 400
-            
+                'message': 'No initiatives found'
+            }), 404
+
         selected_initiatives = json.loads(initiatives_response.answer)
-        total_questions = Question.query.filter(
-            Question.strategic_goal.in_(selected_initiatives)
-        ).count()
-        
-        answered_questions = Response.query.filter(
-            Response.setup_id==setup.id,
-            Response.is_valid==True,
+        total_questions = sum(
+            len(Question.query.filter_by(strategic_goal=init).all())
+            for init in selected_initiatives
+        )
+
+        answered = len(Response.query.filter(
+            Response.setup_id == setup.id,
+            Response.is_valid == True,
             Response.question_id != 1
-        ).count()
-        
-        progress = (answered_questions / total_questions * 100) if total_questions > 0 else 0
-        
+        ).all())
+
+        progress = (answered / total_questions * 100) if total_questions > 0 else 0
+
         return jsonify({
             'status': 'success',
+            'is_valid': True,
             'progress': progress
         })
-        
+
     except Exception as e:
-        logger.error(f"Error saving answer: {str(e)}")
-        db.session.rollback()
+        logger.error(f"Error in save_answer: {str(e)}")
         return jsonify({
             'status': 'error',
-            'message': 'Failed to save answer'
+            'message': 'An unexpected error occurred'
         }), 500
-
-@routes.route('/assessment_results')
-@login_required
-def assessment_results():
-    setup = get_latest_setup(current_user.id)
-    if not setup:
-        flash('Setup not found', 'error')
-        return redirect(url_for('routes.setup'))
-        
-    responses = Response.query.filter_by(
-        setup_id=setup.id,
-        is_valid=True
-    ).all()
-    
-    initiatives_response = next((r for r in responses if r.question_id == 1), None)
-    if not initiatives_response:
-        flash('No initiatives found', 'error')
-        return redirect(url_for('routes.initiatives'))
-        
-    selected_initiatives = json.loads(initiatives_response.answer)
-    
-    results = {}
-    for initiative in selected_initiatives:
-        questions = Question.query.filter_by(
-            strategic_goal=initiative
-        ).order_by(Question.order).all()
-        
-        initiative_results = []
-        total_maturity = 0
-        question_count = 0
-        
-        for question in questions:
-            response = next((r for r in responses if r.question_id == question.id), None)
-            if response:
-                answer_index = int(json.loads(response.answer))
-                maturity_score = answer_index + 1
-                total_maturity += maturity_score
-                question_count += 1
-                
-                initiative_results.append({
-                    'area': question.major_cnapp_area,
-                    'question': question.text,
-                    'answer': question.options[answer_index],
-                    'maturity_score': maturity_score
-                })
-        
-        avg_maturity = round(total_maturity / question_count, 1) if question_count > 0 else 0
-        results[initiative] = {
-            'questions': initiative_results,
-            'average_maturity': avg_maturity
-        }
-    
-    return render_template('assessment_results.html',
-                       setup=setup,
-                       results=results)
 
 @routes.route('/generate_roadmap')
 @login_required
@@ -393,6 +380,8 @@ def generate_roadmap():
             flash('Invalid initiatives data. Please select again.', 'error')
             return redirect(url_for('routes.initiatives'))
             
+        # Check if all questions are answered
+        all_answered = True
         for initiative in selected_initiatives:
             questions = Question.query.filter_by(
                 strategic_goal=initiative
@@ -406,40 +395,49 @@ def generate_roadmap():
                 ).first()
                 
                 if not response:
-                    flash(f'Please answer all questions for {initiative}.', 'error')
-                    index = selected_initiatives.index(initiative)
-                    return redirect(url_for('routes.questionnaire', initiative_index=index))
-        
+                    all_answered = False
+                    break
+                    
+            if not all_answered:
+                break
+                
+        if not all_answered:
+            flash('Please answer all questions before generating the roadmap.', 'info')
+            return redirect(url_for('routes.questionnaire', initiative_index=0))
+            
         return render_template('roadmap_generation.html')
         
+    except json.JSONDecodeError:
+        flash('Invalid initiatives data. Please select again.', 'error')
+        return redirect(url_for('routes.initiatives'))
     except Exception as e:
-        logger.error(f"Error in generate_roadmap: {str(e)}")
-        flash('An error occurred. Please try again.', 'error')
+        logger.error(f"Error generating roadmap: {str(e)}")
+        flash('An error occurred while generating the roadmap. Please try again.', 'error')
         return redirect(url_for('routes.initiatives'))
 
 @routes.route('/api/generate-assessment', methods=['POST'])
 @login_required
 def generate_assessment():
-    setup = get_latest_setup(current_user.id)
-    if not setup:
-        return jsonify({
-            'status': 'error',
-            'message': 'Setup not found'
-        }), 404
-
     try:
-        if not hasattr(current_user, 'credentials') or not current_user.credentials:
+        if not current_user.credentials:
             return jsonify({
                 'status': 'error',
-                'message': 'No Google Drive credentials found. Please sign in again.'
+                'message': 'Google Drive access not authorized'
             }), 401
             
-        responses = Response.query.filter_by(
+        setup = get_latest_setup(current_user.id)
+        if not setup:
+            return jsonify({
+                'status': 'error',
+                'message': 'Setup not found'
+            }), 404
+            
+        # Get assessment results
+        initiatives_response = Response.query.filter_by(
             setup_id=setup.id,
-            is_valid=True
-        ).all()
+            question_id=1
+        ).first()
         
-        initiatives_response = next((r for r in responses if r.question_id == 1), None)
         if not initiatives_response:
             return jsonify({
                 'status': 'error',
@@ -447,204 +445,94 @@ def generate_assessment():
             }), 404
             
         selected_initiatives = json.loads(initiatives_response.answer)
-        
-        content = f'''Cloud Security Maturity Assessment
-Generated on: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-
-Security Advisor: {setup.advisor_name} ({setup.advisor_email})
-Security Leader: {setup.leader_name} ({setup.leader_email})
-Organization: {setup.leader_employer}
-
-Selected Business Initiatives:
-'''
+        results = {}
         
         for initiative in selected_initiatives:
-            content += f"\n{initiative}\n"
             questions = Question.query.filter_by(
                 strategic_goal=initiative
             ).order_by(Question.order).all()
             
+            initiative_results = []
+            total_maturity = 0
+            question_count = 0
+            
             for question in questions:
-                response = next((r for r in responses if r.question_id == question.id), None)
+                response = Response.query.filter_by(
+                    setup_id=setup.id,
+                    question_id=question.id,
+                    is_valid=True
+                ).first()
+                
                 if response:
                     answer_index = int(json.loads(response.answer))
-                    chosen_answer = question.options[answer_index]
                     maturity_score = answer_index + 1
+                    total_maturity += maturity_score
+                    question_count += 1
                     
-                    content += f"\nQuestion: {question.text}"
-                    content += f"\nArea: {question.major_cnapp_area}"
-                    content += f"\nResponse: {chosen_answer}"
-                    content += f"\nMaturity Level: {maturity_score}/5\n"
+                    initiative_results.append({
+                        'area': question.major_cnapp_area,
+                        'question': question.text,
+                        'answer': question.options[answer_index],
+                        'maturity_score': maturity_score
+                    })
+            
+            avg_maturity = round(total_maturity / question_count, 1) if question_count > 0 else 0
+            results[initiative] = {
+                'questions': initiative_results,
+                'average_maturity': avg_maturity
+            }
+            
+        # Generate content for Google Doc
+        content = f"""Cloud Security Maturity Assessment Results
+Generated on {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}
+
+Assessment Information:
+Security Advisor: {setup.advisor_name} ({setup.advisor_email})
+Security Leader: {setup.leader_name} ({setup.leader_email})
+Organization: {setup.leader_employer}
+
+"""
         
+        for initiative, data in results.items():
+            content += f"\n{initiative}\n"
+            content += f"Average Maturity Score: {data['average_maturity']}/5\n\n"
+            
+            for question in data['questions']:
+                content += f"Area: {question['area']}\n"
+                content += f"Question: {question['question']}\n"
+                content += f"Response: {question['answer']}\n"
+                content += f"Maturity Score: {question['maturity_score']}/5\n\n"
+                
+        # Create Google Doc
         drive_service = GoogleDriveService()
         doc_id = drive_service.create_presentation(
-            credentials=current_user.credentials,
-            title=f"Cloud Security Maturity Assessment - {setup.leader_employer}",
-            content=content
+            current_user.credentials,
+            f"Cloud Security Maturity Assessment - {setup.leader_employer}",
+            content
         )
         
         if not doc_id:
-            logger.error("Failed to create Google Doc")
             return jsonify({
                 'status': 'error',
-                'message': 'Unable to create document. Please try again.'
+                'message': 'Failed to create Google Doc'
             }), 500
             
-        doc_url = f"https://docs.google.com/document/d/{doc_id}"
-        
+        # Save presentation record
         presentation = Presentation(
             user_id=current_user.id,
-            google_doc_id=doc_id,
-            created_at=datetime.utcnow()
+            google_doc_id=doc_id
         )
+        db.session.add(presentation)
+        db.session.commit()
         
-        try:
-            db.session.add(presentation)
-            db.session.commit()
-            
-            return jsonify({
-                'status': 'success',
-                'doc_url': doc_url
-            })
-            
-        except Exception as e:
-            logger.error(f"Error saving presentation record: {str(e)}")
-            db.session.rollback()
-            return jsonify({
-                'status': 'error',
-                'message': 'Failed to save presentation record. Please try again.'
-            }), 500
-            
+        return jsonify({
+            'status': 'success',
+            'doc_url': f"https://docs.google.com/document/d/{doc_id}"
+        })
+        
     except Exception as e:
         logger.error(f"Error generating assessment: {str(e)}")
-        db.session.rollback()
         return jsonify({
             'status': 'error',
-            'message': 'Failed to generate assessment. Please try again.'
+            'message': 'An error occurred while generating the assessment'
         }), 500
-
-@routes.route('/admin/initiatives')
-@admin_required
-def admin_initiatives():
-    try:
-        initiatives = Initiative.query.order_by(Initiative.order).all()
-        return render_template('admin/initiatives.html', initiatives=initiatives)
-    except Exception as e:
-        logger.error(f"Error loading initiatives: {str(e)}")
-        flash('Error loading initiatives', 'error')
-        return redirect(url_for('routes.index'))
-
-@routes.route('/admin/initiatives/add', methods=['GET', 'POST'])
-@admin_required
-def admin_add_initiative():
-    if request.method == 'POST':
-        try:
-            initiative = Initiative(
-                title=request.form['title'],
-                description=request.form['description'],
-                order=Initiative.query.count()
-            )
-            db.session.add(initiative)
-            db.session.commit()
-            flash('Initiative added successfully!', 'success')
-            return redirect(url_for('routes.admin_initiatives'))
-        except Exception as e:
-            logger.error(f"Error adding initiative: {str(e)}")
-            flash('Error adding initiative', 'error')
-            db.session.rollback()
-    return render_template('admin/initiative_form.html')
-
-@routes.route('/admin/initiatives/edit/<int:initiative_id>', methods=['GET', 'POST'])
-@admin_required
-def admin_edit_initiative(initiative_id):
-    initiative = Initiative.query.get_or_404(initiative_id)
-    if request.method == 'POST':
-        try:
-            initiative.title = request.form['title']
-            initiative.description = request.form['description']
-            db.session.commit()
-            flash('Initiative updated successfully!', 'success')
-            return redirect(url_for('routes.admin_initiatives'))
-        except Exception as e:
-            logger.error(f"Error updating initiative: {str(e)}")
-            flash('Error updating initiative', 'error')
-            db.session.rollback()
-    return render_template('admin/initiative_form.html', initiative=initiative)
-
-@routes.route('/admin/initiatives/delete/<int:initiative_id>', methods=['POST'])
-@admin_required
-def admin_delete_initiative(initiative_id):
-    try:
-        initiative = Initiative.query.get_or_404(initiative_id)
-        db.session.delete(initiative)
-        db.session.commit()
-        flash('Initiative deleted successfully!', 'success')
-    except Exception as e:
-        logger.error(f"Error deleting initiative: {str(e)}")
-        flash('Error deleting initiative', 'error')
-        db.session.rollback()
-    return redirect(url_for('routes.admin_initiatives'))
-
-@routes.route('/admin/questions')
-@admin_required
-def admin_questions():
-    questions = Question.query.order_by(Question.strategic_goal, Question.order).all()
-    return render_template('admin/questions.html', questions=questions)
-
-@routes.route('/admin/questions/add', methods=['GET', 'POST'])
-@admin_required
-def admin_add_question():
-    if request.method == 'POST':
-        try:
-            question = Question(
-                strategic_goal=request.form['strategic_goal'],
-                major_cnapp_area=request.form['major_cnapp_area'],
-                text=request.form['text'],
-                options=request.form['options'].split(','),
-                weighting_score=request.form['weighting_score'],
-                order=int(request.form['order'])
-            )
-            db.session.add(question)
-            db.session.commit()
-            flash('Question added successfully!', 'success')
-            return redirect(url_for('routes.admin_questions'))
-        except Exception as e:
-            logger.error(f"Error adding question: {str(e)}")
-            flash('Error adding question', 'error')
-            db.session.rollback()
-    return render_template('admin/question_form.html')
-
-@routes.route('/admin/questions/edit/<int:question_id>', methods=['GET', 'POST'])
-@admin_required
-def admin_edit_question(question_id):
-    question = Question.query.get_or_404(question_id)
-    if request.method == 'POST':
-        try:
-            question.strategic_goal = request.form['strategic_goal']
-            question.major_cnapp_area = request.form['major_cnapp_area']
-            question.text = request.form['text']
-            question.options = request.form['options'].split(',')
-            question.weighting_score = request.form['weighting_score']
-            question.order = int(request.form['order'])
-            db.session.commit()
-            flash('Question updated successfully!', 'success')
-            return redirect(url_for('routes.admin_questions'))
-        except Exception as e:
-            logger.error(f"Error updating question: {str(e)}")
-            flash('Error updating question', 'error')
-            db.session.rollback()
-    return render_template('admin/question_form.html', question=question)
-
-@routes.route('/admin/questions/delete/<int:question_id>', methods=['POST'])
-@admin_required
-def admin_delete_question(question_id):
-    try:
-        question = Question.query.get_or_404(question_id)
-        db.session.delete(question)
-        db.session.commit()
-        flash('Question deleted successfully!', 'success')
-    except Exception as e:
-        logger.error(f"Error deleting question: {str(e)}")
-        flash('Error deleting question', 'error')
-        db.session.rollback()
-    return redirect(url_for('routes.admin_questions'))

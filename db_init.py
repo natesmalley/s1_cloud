@@ -3,6 +3,7 @@ from models import Question, User, Setup, Response, Presentation, Initiative
 from sqlalchemy import text
 import csv
 import logging
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -79,14 +80,18 @@ def clear_and_init_db():
     try:
         # Drop all tables in the correct order
         logger.info("Dropping existing tables...")
-        db.session.execute(text('DROP TABLE IF EXISTS response CASCADE'))
-        db.session.execute(text('DROP TABLE IF EXISTS presentation CASCADE'))
-        db.session.execute(text('DROP TABLE IF EXISTS setup CASCADE'))
-        db.session.execute(text('DROP TABLE IF EXISTS question CASCADE'))
-        db.session.execute(text('DROP TABLE IF EXISTS initiative CASCADE'))
-        db.session.execute(text('DROP TABLE IF EXISTS users CASCADE'))
-        db.session.commit()
-        logger.info("All tables dropped successfully")
+        try:
+            db.session.execute(text('DROP TABLE IF EXISTS response CASCADE'))
+            db.session.execute(text('DROP TABLE IF EXISTS presentation CASCADE'))
+            db.session.execute(text('DROP TABLE IF EXISTS setup CASCADE'))
+            db.session.execute(text('DROP TABLE IF EXISTS question CASCADE'))
+            db.session.execute(text('DROP TABLE IF EXISTS initiative CASCADE'))
+            db.session.execute(text('DROP TABLE IF EXISTS users CASCADE'))
+            db.session.commit()
+            logger.info("All tables dropped successfully")
+        except (IntegrityError, ProgrammingError) as e:
+            logger.warning(f"Error dropping tables (this is normal for first run): {e}")
+            db.session.rollback()
         
         # Create fresh tables
         logger.info("Creating tables...")
