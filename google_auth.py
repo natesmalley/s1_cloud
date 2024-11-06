@@ -7,7 +7,6 @@ from flask_login import login_required, login_user, logout_user, current_user
 from oauthlib.oauth2 import WebApplicationClient, OAuth2Error
 from extensions import db
 from models import User
-from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -18,8 +17,7 @@ GOOGLE_CLIENT_SECRET = os.environ["GOOGLE_OAUTH_CLIENT_SECRET"]
 GOOGLE_DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configuration"
 
 # IMPORTANT: DO NOT MODIFY THIS URL - Replit handles port forwarding internally
-# Changing this URL will break Google OAuth authentication
-REDIRECT_URL = 'https://8767fe56-c668-4fa2-9723-292ada26865d-00-2p1xk2p8ugpyl.kirk.replit.dev/google_login/callback'
+REDIRECT_URL = 'https://s1cloud.yourdomain.repl.co/google_login/callback'
 
 REQUIRED_SCOPES = [
     "openid",
@@ -36,7 +34,6 @@ google_auth = Blueprint("google_auth", __name__)
 def login():
     try:
         logger.info("Initiating Google OAuth login process")
-        # Add warning log about redirect URL
         logger.warning("DO NOT modify the redirect URL - it must match Google OAuth settings exactly")
         
         google_provider_cfg = requests.get(GOOGLE_DISCOVERY_URL).json()
@@ -58,28 +55,24 @@ def login():
 @google_auth.route("/google_login/callback")
 def callback():
     try:
-        # Log incoming request details
-        logger.info(f"Raw callback URL: {request.url}")
-        
-        # Extract and validate the authorization code
+        # Get authorization code
         code = request.args.get("code")
         if not code:
-            logger.error("No authorization code received")
             flash("Authentication failed. Please try again.", "error")
             return redirect(url_for("routes.index"))
-        
+
         # Get token info
         google_provider_cfg = requests.get(GOOGLE_DISCOVERY_URL).json()
         token_endpoint = google_provider_cfg["token_endpoint"]
         
-        # Prepare token request
+        # Get token
         token_url, headers, body = client.prepare_token_request(
             token_endpoint,
             authorization_response=request.url,
             redirect_url=REDIRECT_URL,
             code=code
         )
-
+        
         token_response = requests.post(
             token_url,
             headers=headers,
@@ -95,31 +88,30 @@ def callback():
         uri, headers, body = client.add_token(userinfo_endpoint)
         userinfo_response = requests.get(uri, headers=headers)
         
-        if not userinfo_response.ok:
-            logger.error("Failed to get user info")
-            flash("Failed to get user information. Please try again.", "error")
-            return redirect(url_for("routes.index"))
+        if userinfo_response.ok:
+            userinfo = userinfo_response.json()
+            
+            # Create or update user
+            user = User.query.filter_by(email=userinfo["email"]).first()
+            if not user:
+                user = User(
+                    username=userinfo.get("name", userinfo["email"]),
+                    email=userinfo["email"]
+                )
+                db.session.add(user)
+                db.session.commit()
+            
+            # Log user in
+            login_user(user)
+            
+            # Redirect based on setup completion
+            if user.setup_completed:
+                return redirect(url_for('routes.questionnaire'))
+            return redirect(url_for('routes.setup'))
+            
+        flash("Failed to get user information. Please try again.", "error")
+        return redirect(url_for("routes.index"))
 
-        userinfo = userinfo_response.json()
-        
-        # Create or update user
-        user = User.query.filter_by(email=userinfo["email"]).first()
-        if not user:
-            user = User(
-                username=userinfo.get("name", userinfo["email"]),
-                email=userinfo["email"]
-            )
-            db.session.add(user)
-            db.session.commit()
-        
-        # Log user in
-        login_user(user)
-        
-        # Redirect based on setup completion
-        if user.setup_completed:
-            return redirect(url_for('routes.questionnaire'))
-        return redirect(url_for('routes.setup'))
-        
     except Exception as e:
         logger.error(f"Error in OAuth callback: {str(e)}")
         flash("Authentication failed. Please try again.", "error")
