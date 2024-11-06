@@ -19,7 +19,6 @@ def clear_and_init_db():
         
         # Initialize strategic goals question first
         strategic_question = Question(
-            id=1,
             text='Please select your top Business Initiatives in Cloud Security',
             question_type='multiple_choice',
             options=[
@@ -68,9 +67,10 @@ def clear_and_init_db():
         db.session.add(strategic_question)
         db.session.commit()
         
-        logger.info("Strategic goals question initialized")
+        # Get the ID of the strategic question for child questions
+        strategic_id = strategic_question.id
         
-        # Then initialize other questions in batches
+        # Then initialize other questions
         from app import parse_csv_questions
         questions_by_goal = parse_csv_questions()
         order = 2
@@ -78,30 +78,20 @@ def clear_and_init_db():
         for goal, questions in questions_by_goal.items():
             for q_data in questions:
                 try:
-                    options = [
-                        {
-                            'title': opt.strip(),
-                            'description': '',
-                            'icon': 'check-circle'
-                        } for opt in q_data['options']
-                    ]
-                    
                     question = Question(
                         text=q_data['text'],
                         question_type='multiple_choice',
-                        options=options,
+                        options=[{'title': opt.strip(), 'description': '', 'icon': 'check-circle'} 
+                                for opt in q_data['options']],
                         required=True,
                         validation_rules={'min_count': 1, 'max_count': 1},
-                        parent_question_id=1,
+                        parent_question_id=strategic_id,
                         parent_answer=goal,
                         order=order
                     )
                     db.session.add(question)
                     order += 1
-                    
-                    # Commit each question individually
                     db.session.commit()
-                    
                 except Exception as e:
                     logger.error(f"Error adding question: {str(e)}")
                     db.session.rollback()
