@@ -27,7 +27,8 @@ def admin_required(f):
             'Jaldevi72@gmail.com',
             'm_mcgrail@outlook.com',
             'sentinelhowie@gmail.com',
-            's1.slappey@gmail.com'
+            's1.slappey@gmail.com',
+            'gilberto.castillo@rogers.com'
         ]
         
         if not (current_user.email.endswith('@sentinelone.com') or current_user.email in admin_emails):
@@ -238,7 +239,8 @@ def questionnaire(initiative_index=0):
         for response in responses:
             if response.question_id != 1:
                 try:
-                    saved_answers[response.question_id] = json.loads(response.answer)
+                    answer_data = json.loads(response.answer)
+                    saved_answers[response.question_id] = answer_data[0] if isinstance(answer_data, list) else answer_data
                 except (json.JSONDecodeError, TypeError):
                     continue
         
@@ -289,12 +291,8 @@ def save_answer():
                 'message': 'Missing question_id or answer'
             }), 400
 
-        question = Question.query.get(question_id)
-        if not question:
-            return jsonify({
-                'status': 'error',
-                'message': 'Question not found'
-            }), 404
+        # Handle both single integer and array answers
+        answer_value = answer if isinstance(answer, list) else [answer]
 
         response = Response.query.filter_by(
             setup_id=setup.id,
@@ -302,29 +300,22 @@ def save_answer():
         ).first()
 
         if response:
-            response.answer = json.dumps(answer)
+            response.answer = json.dumps(answer_value)
             response.is_valid = True
             response.timestamp = datetime.utcnow()
         else:
             response = Response(
                 setup_id=setup.id,
                 question_id=question_id,
-                answer=json.dumps(answer),
+                answer=json.dumps(answer_value),
                 is_valid=True,
                 timestamp=datetime.utcnow()
             )
             db.session.add(response)
 
-        try:
-            db.session.commit()
-        except Exception as e:
-            logger.error(f"Database error while saving answer: {str(e)}")
-            db.session.rollback()
-            return jsonify({
-                'status': 'error',
-                'message': 'Failed to save answer'
-            }), 500
+        db.session.commit()
 
+        # Calculate progress
         initiatives_response = Response.query.filter_by(
             setup_id=setup.id,
             question_id=1
@@ -402,7 +393,8 @@ def assessment_results():
                 ).first()
 
                 if response:
-                    answer_index = json.loads(response.answer)
+                    answer_data = json.loads(response.answer)
+                    answer_index = answer_data[0] if isinstance(answer_data, list) else answer_data
                     maturity_score = answer_index + 1  # Convert 0-based index to 1-5 score
                     total_maturity += maturity_score
                     answered_count += 1
