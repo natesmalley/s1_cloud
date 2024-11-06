@@ -15,6 +15,7 @@ def init_questions():
     # Read CSV and create questions
     with open('questions.csv', 'r') as file:
         reader = csv.DictReader(file)
+        order = 0
         for row in reader:
             if not row['Strategic Goal'] or row['Strategic Goal'].startswith('**'):
                 continue
@@ -27,20 +28,25 @@ def init_questions():
                 text=row['Guided Questions'],
                 options=options,
                 weighting_score=row['Weighting Score (Maturity)'],
-                order=0
+                order=order
             )
+            order += 1
             db.session.add(question)
     
     db.session.commit()
 
 def clear_and_init_db():
     try:
-        # Drop all tables using SQLAlchemy models
-        db.drop_all()
+        # Drop tables in correct order to handle dependencies
+        for table in reversed(db.metadata.sorted_tables):
+            logger.info(f"Dropping table: {table.name}")
+            table.drop(db.engine, checkfirst=True)
+        
         db.session.commit()
         
         # Create fresh tables
         db.create_all()
+        
         # Initialize questions
         init_questions()
         
