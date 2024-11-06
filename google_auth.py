@@ -57,43 +57,71 @@ def callback():
     try:
         logger.info(f"Received callback request: {request.url}")
         
-        # Get authorization code
+        # Get authorization code with error handling
         code = request.args.get("code")
         if not code:
-            flash("Authentication failed. Please try again.", "error")
+            logger.error("No authorization code received")
+            flash("Authentication failed - no code received", "error")
             return redirect(url_for("routes.index"))
 
         # Get token info
-        google_provider_cfg = requests.get(GOOGLE_DISCOVERY_URL).json()
-        token_endpoint = google_provider_cfg["token_endpoint"]
+        try:
+            google_provider_cfg = requests.get(GOOGLE_DISCOVERY_URL).json()
+            token_endpoint = google_provider_cfg["token_endpoint"]
+        except Exception as e:
+            logger.error(f"Failed to get Google provider config: {e}")
+            flash("Authentication failed - provider configuration error", "error")
+            return redirect(url_for("routes.index"))
         
-        # Get token
-        token_url, headers, body = client.prepare_token_request(
-            token_endpoint,
-            authorization_response=request.url,
-            redirect_url=REDIRECT_URL,
-            code=code
-        )
+        # Get token with extended timeout
+        try:
+            token_url, headers, body = client.prepare_token_request(
+                token_endpoint,
+                authorization_response=request.url,
+                redirect_url=REDIRECT_URL,
+                code=code
+            )
+            
+            token_response = requests.post(
+                token_url,
+                headers=headers,
+                data=body,
+                auth=(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET),
+                timeout=10
+            )
+            
+            if not token_response.ok:
+                logger.error(f"Token request failed: {token_response.text}")
+                flash("Authentication failed - token request error", "error")
+                return redirect(url_for("routes.index"))
+                
+            client.parse_request_body_response(json.dumps(token_response.json()))
+            
+        except Exception as e:
+            logger.error(f"Failed to get token: {e}")
+            flash("Authentication failed - token error", "error")
+            return redirect(url_for("routes.index"))
         
-        token_response = requests.post(
-            token_url,
-            headers=headers,
-            data=body,
-            auth=(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET),
-        )
-
-        # Parse token response
-        client.parse_request_body_response(json.dumps(token_response.json()))
-        
-        # Get user info
-        userinfo_endpoint = google_provider_cfg["userinfo_endpoint"]
-        uri, headers, body = client.add_token(userinfo_endpoint)
-        userinfo_response = requests.get(uri, headers=headers)
-        
-        if userinfo_response.ok:
+        # Get user info with error handling
+        try:
+            userinfo_endpoint = google_provider_cfg["userinfo_endpoint"]
+            uri, headers, body = client.add_token(userinfo_endpoint)
+            userinfo_response = requests.get(uri, headers=headers, timeout=10)
+            
+            if not userinfo_response.ok:
+                logger.error(f"User info request failed: {userinfo_response.text}")
+                flash("Failed to get user information", "error")
+                return redirect(url_for("routes.index"))
+                
             userinfo = userinfo_response.json()
             
-            # Create or update user
+        except Exception as e:
+            logger.error(f"Failed to get user info: {e}")
+            flash("Failed to get user information", "error")
+            return redirect(url_for("routes.index"))
+            
+        # Create or update user with error handling
+        try:
             user = User.query.filter_by(email=userinfo["email"]).first()
             if not user:
                 user = User(
@@ -103,20 +131,21 @@ def callback():
                 db.session.add(user)
                 db.session.commit()
             
-            # Log user in
             login_user(user)
             
-            # Redirect based on setup completion
             if user.setup_completed:
                 return redirect(url_for('routes.questionnaire'))
             return redirect(url_for('routes.setup'))
             
-        flash("Failed to get user information. Please try again.", "error")
-        return redirect(url_for("routes.index"))
+        except Exception as e:
+            logger.error(f"Database error: {e}")
+            db.session.rollback()
+            flash("Failed to create user account", "error")
+            return redirect(url_for("routes.index"))
 
     except Exception as e:
-        logger.error(f"Error in OAuth callback: {str(e)}")
-        flash("Authentication failed. Please try again.", "error")
+        logger.error(f"Unhandled error in callback: {e}")
+        flash("An unexpected error occurred", "error")
         return redirect(url_for("routes.index"))
 
 @google_auth.route("/logout")
