@@ -4,6 +4,7 @@ from googleapiclient.discovery import build
 from models import Question, Response, User, db
 import json
 from app import create_app
+from init_db import init_questions, clear_and_init_db
 import logging
 
 # Configure logging
@@ -93,9 +94,21 @@ def show_strategic_goals():
             st.error("Failed to load strategic goals question")
             return
             
+        # Get existing response
+        response = Response.query.filter_by(
+            user_id=st.session_state.user_id,
+            question_id=1
+        ).first()
+        
         selected_initiatives = []
         for option in question.options:
-            if st.checkbox(option['title'], help=option['description']):
+            # Check if this option was previously selected
+            is_selected = False
+            if response:
+                saved_answers = json.loads(response.answer)
+                is_selected = option['title'] in saved_answers
+                
+            if st.checkbox(option['title'], value=is_selected, help=option['description']):
                 selected_initiatives.append(option['title'])
         
         if selected_initiatives:
@@ -114,45 +127,55 @@ def show_questionnaire():
     st.header('Strategic Assessment Questionnaire')
     st.markdown('---')
     
-    # Get user's response for strategic goals
     with flask_app.app_context():
-        strategic_response = Response.query.filter_by(
-            user_id=st.session_state.user_id,
-            question_id=1
-        ).first()
-        
-        if not strategic_response:
-            show_strategic_goals()
-        else:
-            selected_goals = json.loads(strategic_response.answer)
-            # Get questions for selected goals
-            questions = Question.query.filter(
-                Question.parent_answer.in_(selected_goals)
-            ).order_by(Question.order).all()
+        try:
+            # Get user's response for strategic goals
+            strategic_response = Response.query.filter_by(
+                user_id=st.session_state.user_id,
+                question_id=1
+            ).first()
             
-            for question in questions:
-                st.subheader(question.text)
-                response = Response.query.filter_by(
-                    user_id=st.session_state.user_id,
-                    question_id=question.id
-                ).first()
+            if not strategic_response:
+                show_strategic_goals()
+            else:
+                selected_goals = json.loads(strategic_response.answer)
+                st.write("### Selected Business Initiatives:")
+                for goal in selected_goals:
+                    st.write(f"- {goal}")
+                st.markdown("---")
                 
-                current_answer = json.loads(response.answer) if response and response.answer else []
+                # Get questions for selected goals
+                questions = Question.query.filter(
+                    Question.parent_answer.in_(selected_goals)
+                ).order_by(Question.order).all()
                 
-                for option in question.options:
-                    if st.checkbox(
-                        option['title'],
-                        value=option['title'] in current_answer,
-                        help=option['description']
-                    ):
-                        if question.id not in [r.question_id for r in Response.query.filter_by(user_id=st.session_state.user_id).all()]:
-                            save_answer([option['title']])
-    
-    # Show progress
-    progress = calculate_progress()
-    st.sidebar.header('Progress')
-    st.sidebar.progress(progress / 100)
-    st.sidebar.write(f'{progress:.0f}% Complete')
+                for question in questions:
+                    st.subheader(question.text)
+                    response = Response.query.filter_by(
+                        user_id=st.session_state.user_id,
+                        question_id=question.id
+                    ).first()
+                    
+                    current_answer = json.loads(response.answer) if response and response.answer else []
+                    
+                    for option in question.options:
+                        if st.checkbox(
+                            option['title'],
+                            value=option['title'] in current_answer,
+                            help=option['description']
+                        ):
+                            if question.id not in [r.question_id for r in Response.query.filter_by(user_id=st.session_state.user_id).all()]:
+                                save_answer([option['title']])
+                
+                # Show progress
+                progress = calculate_progress()
+                st.sidebar.header('Progress')
+                st.sidebar.progress(progress / 100)
+                st.sidebar.write(f'{progress:.0f}% Complete')
+                
+        except Exception as e:
+            logger.error(f"Error in questionnaire: {e}")
+            st.error("An error occurred. Please try refreshing the page.")
 
 def main():
     # Initialize session state for user authentication
@@ -177,15 +200,15 @@ def main():
     show_questionnaire()
 
 if __name__ == '__main__':
-    import sys
-    from init_db import clear_and_init_db
+    with flask_app.app_context():
+        try:
+            clear_and_init_db()
+        except Exception as e:
+            logger.error(f"Error initializing database: {e}")
+            st.error("Failed to initialize database. Please refresh the page.")
+            raise
     
-    app = create_app()
-    with app.app_context():
-        # Initialize database first
-        clear_and_init_db()
-        
-    # Then start Streamlit
+    # Start Streamlit
     if len(sys.argv) == 1:
         sys.argv.extend(['run', '--server.port=5000', '--server.address=0.0.0.0'])
     main()
