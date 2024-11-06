@@ -1,11 +1,10 @@
 import streamlit as st
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
 from models import Question, Response, User, db
 import json
 from app import create_app
-from init_db import init_questions, clear_and_init_db
+from init_db import clear_and_init_db
 import logging
+import sys
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -202,11 +201,11 @@ def main():
 if __name__ == '__main__':
     with flask_app.app_context():
         try:
+            # Initialize database first
             clear_and_init_db()
         except Exception as e:
             logger.error(f"Error initializing database: {e}")
             st.error("Failed to initialize database. Please refresh the page.")
-            raise
     
     # Start Streamlit
     if len(sys.argv) == 1:

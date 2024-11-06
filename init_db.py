@@ -46,7 +46,10 @@ def init_questions():
 
 def clear_and_init_db():
     try:
-        # Drop and recreate tables
+        # Drop existing tables and recreate schema
+        db.session.close()
+        db.session.commit()
+        
         with db.engine.connect() as conn:
             conn.execute(text('DROP SCHEMA public CASCADE;'))
             conn.execute(text('CREATE SCHEMA public;'))
@@ -57,7 +60,7 @@ def clear_and_init_db():
         
         # Initialize strategic goals question first
         strategic_question = Question(
-            id=1,  # Explicitly set ID to 1
+            id=1,
             text='Please select your top Business Initiatives in Cloud Security',
             question_type='multiple_choice',
             options=[
@@ -102,7 +105,7 @@ def clear_and_init_db():
             order=1
         )
         db.session.add(strategic_question)
-        db.session.commit()
+        db.session.commit()  # Commit first question separately
         
         # Then initialize other questions
         init_questions()
