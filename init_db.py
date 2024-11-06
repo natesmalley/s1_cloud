@@ -8,16 +8,28 @@ logger = logging.getLogger(__name__)
 
 def clear_and_init_db():
     try:
-        # Drop and recreate schema with proper sequence handling
+        # First drop schema and recreate it
         with db.engine.connect() as conn:
             conn.execute(text('DROP SCHEMA IF EXISTS public CASCADE;'))
             conn.execute(text('CREATE SCHEMA public;'))
             conn.execute(text('GRANT ALL ON SCHEMA public TO public;'))
             conn.commit()
 
-        # Create all tables fresh
+        # Create all tables first
         db.create_all()
         db.session.commit()
+
+        # Verify tables are created before proceeding
+        with db.engine.connect() as conn:
+            result = conn.execute(text('''
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name = 'question'
+                );
+            '''))
+            if not result.scalar():
+                raise Exception("Tables were not created properly")
 
         # Initialize strategic goals question
         strategic_question = Question(
@@ -67,10 +79,10 @@ def clear_and_init_db():
         db.session.add(strategic_question)
         db.session.commit()
 
-        # Store strategic ID for child questions
+        # Get strategic ID for child questions
         strategic_id = strategic_question.id
 
-        # Parse and add child questions
+        # Initialize remaining questions
         from app import parse_csv_questions
         questions_by_goal = parse_csv_questions()
         order = 2
