@@ -6,6 +6,7 @@ from extensions import db, login_manager
 import google_auth
 from routes import routes
 from db_init import clear_and_init_db
+from sqlalchemy.exc import SQLAlchemyError
 
 # Configure logging
 logging.basicConfig(
@@ -37,14 +38,18 @@ def create_app():
 def initialize_database(app):
     with app.app_context():
         try:
-            # Drop and recreate all tables
-            logger.info("Starting database initialization...")
-            db.drop_all()
+            # Create all tables first
             db.create_all()
+            logger.info("Database tables created successfully")
             
             # Initialize with seed data
-            clear_and_init_db()
-            logger.info("Database initialized successfully")
+            try:
+                clear_and_init_db()
+                logger.info("Database initialized with seed data successfully")
+            except SQLAlchemyError as e:
+                logger.warning(f"Tables already exist, skipping seed data: {e}")
+                db.session.rollback()
+                
         except Exception as e:
             logger.error(f"Error initializing database: {e}")
             raise
@@ -55,6 +60,8 @@ if __name__ == '__main__':
     try:
         # Initialize database before running the app
         initialize_database(app)
+        
+        # Start the Flask application
         app.run(host='0.0.0.0', port=5000)
     except Exception as e:
         logger.error(f"Failed to start application: {e}")
