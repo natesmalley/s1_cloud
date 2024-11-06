@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-between align-items-center mb-4">
+        <div class="col">
+            <h2>Manage Initiatives</h2>
+        </div>
+        <div class="col-auto">
+            <a href="{{ url_for('routes.admin_add_initiative') }}" class="btn btn-primary">
+                <i data-feather="plus"></i> Add Initiative
+            </a>
+        </div>
+    </div>
+
+    {% if initiatives %}
+    <div class="table-responsive">
+        <table class="table table-dark table-hover">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Description</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for initiative in initiatives %}
+                <tr>
+                    <td>{{ initiative.title }}</td>
+                    <td>{{ initiative.description }}</td>
+                    <td>
+                        <div class="btn-group">
+                            <a href="{{ url_for('routes.admin_edit_initiative', title=initiative.title) }}" 
+                               class="btn btn-sm btn-secondary">
+                                <i data-feather="edit-2"></i>
+                            </a>
+                            <button type="button" 
+                                    class="btn btn-sm btn-danger" 
+                                    onclick="confirmDelete('{{ initiative.title }}')">
+                                <i data-feather="trash-2"></i>
+                            </button>
+                        </div>
+                        <form id="delete-form-{{ initiative.title|replace(' ', '_') }}" 
+                              action="{{ url_for('routes.admin_delete_initiative', title=initiative.title) }}" 
+                              method="POST" 
+                              style="display: none;">
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="alert alert-info">
+        No initiatives found. Click the Add Initiative button to create one.
+    </div>
+    {% endif %}
+</div>
+
+{% block scripts %}
+<script>
+function confirmDelete(title) {
+    if (confirm('Are you sure you want to delete this initiative? This action cannot be undone.')) {
+        document.getElementById(`delete-form-${title.replace(/ /g, '_')}`).submit();
+    }
+}
+</script>
+{% endblock %}
+{% endblock %}

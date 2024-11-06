@@ -15,13 +15,42 @@
                 <img src="{{ url_for('static', filename='img/logo.png') }}" width="40" height="40" class="d-inline-block align-top" alt="Cloud Security Roadmap Guide">
                 Cloud Security Roadmap Guide
             </a>
-            {% if current_user.is_authenticated %}
-            <div class="navbar-nav">
-                <a class="nav-item nav-link" href="{{ url_for('routes.setup') }}">Setup</a>
-                <a class="nav-item nav-link" href="{{ url_for('routes.questionnaire', initiative_index=0) }}">Questionnaire</a>
-                <a class="nav-item nav-link" href="{{ url_for('google_auth.logout') }}">Logout</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    {% if current_user.is_authenticated %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('routes.setup') }}">Setup</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('routes.initiatives') }}">Initiatives</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('routes.questionnaire', initiative_index=0) }}">Questionnaire</a>
+                        </li>
+                        {% if current_user.email and current_user.email.endswith('@s1.ai') %}
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                                    Admin
+                                </a>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="{{ url_for('routes.admin_initiatives') }}">Manage Initiatives</a></li>
+                                    <li><a class="dropdown-item" href="{{ url_for('routes.admin_questions') }}">Manage Questions</a></li>
+                                </ul>
+                            </li>
+                        {% endif %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('google_auth.logout') }}">Logout</a>
+                        </li>
+                    {% else %}
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('google_auth.login') }}">Login</a>
+                        </li>
+                    {% endif %}
+                </ul>
             </div>
-            {% endif %}
         </div>
     </nav>
 

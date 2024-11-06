@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card bg-dark">
+                <div class="card-body">
+                    <h2 class="mb-4">{{ 'Edit' if initiative else 'Add' }} Initiative</h2>
+                    
+                    <form method="POST">
+                        <div class="mb-3">
+                            <label class="form-label">Title</label>
+                            <input type="text" class="form-control" name="title" 
+                                   value="{{ initiative.title if initiative else '' }}" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Description</label>
+                            <textarea class="form-control" name="description" rows="3" required>{{ initiative.description if initiative else '' }}</textarea>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('routes.admin_initiatives') }}" class="btn btn-secondary">Cancel</a>
+                            <button type="submit" class="btn btn-primary">{{ 'Update' if initiative else 'Add' }} Initiative</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
