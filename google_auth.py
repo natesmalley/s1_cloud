@@ -5,7 +5,7 @@ import logging
 from flask import Blueprint, redirect, request, url_for, flash, render_template, current_app
 from flask_login import login_required, login_user, logout_user, current_user
 from oauthlib.oauth2 import WebApplicationClient, OAuth2Error
-from extensions import db
+from extensions import db, get_db
 from models import User
 from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
 from time import sleep
@@ -29,6 +29,13 @@ REQUIRED_SCOPES = [
     "https://www.googleapis.com/auth/drive.file",
     "https://www.googleapis.com/auth/documents"
 ]
+
+def get_db_session():
+    try:
+        return get_db()
+    except Exception as e:
+        logger.error(f"Error getting DB session: {e}")
+        return db.session
 
 def sanitize_callback_url(url):
     parsed = urlparse(url)
@@ -199,8 +206,8 @@ def callback():
         users_email = userinfo["email"]
         users_name = userinfo.get("given_name", users_email.split("@")[0])
 
-        # Add retry logic for database operations
-        session = get_db()
+        # Get database session with fallback
+        session = get_db_session()
         user = None
         for _ in range(3):
             try:

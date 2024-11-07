@@ -26,10 +26,11 @@ def admin_required(f):
             
         admin_emails = [
             'mpsmalls11@gmail.com',
-            'Jaldevi72@gmail.com',
+            'jaldevi72@gmail.com',
             'm_mcgrail@outlook.com',
             'sentinelhowie@gmail.com',
-            's1.slappey@gmail.com'
+            's1.slappey@gmail.com',
+            
         ]
         
         if not (current_user.email.endswith('@sentinelone.com') or current_user.email in admin_emails):
