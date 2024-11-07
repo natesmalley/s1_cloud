@@ -15,6 +15,7 @@ class Questionnaire {
                 <div class="alert alert-danger" role="alert">
                     <i data-feather="alert-triangle" class="me-2"></i>
                     ${message}
+                    <button type="button" class="btn btn-link" onclick="window.location.reload()">Retry</button>
                 </div>
             `;
             feather.replace();
@@ -28,6 +29,9 @@ class Questionnaire {
                 console.warn('Questions container not found');
                 return;
             }
+
+            // Add loading state
+            container.innerHTML = '<div class="text-center"><div class="spinner-border"></div><p>Loading questions...</p></div>';
 
             const [questionsResponse, answersResponse] = await Promise.all([
                 fetch('/api/questions').catch(error => {
@@ -48,19 +52,8 @@ class Questionnaire {
             const questionsData = await questionsResponse.json();
             const savedAnswers = await answersResponse.json();
             
-            if (!Array.isArray(questionsData)) {
+            if (!questionsData || !Array.isArray(questionsData)) {
                 throw new Error('Invalid questions data format');
-            }
-            
-            if (questionsData.length === 0) {
-                container.innerHTML = `
-                    <div class="alert alert-info" role="alert">
-                        <i data-feather="info" class="me-2"></i>
-                        No questions available for this section.
-                    </div>
-                `;
-                feather.replace();
-                return;
             }
             
             this.questions = questionsData;
@@ -78,17 +71,16 @@ class Questionnaire {
             }
             
             this.renderQuestion();
-            this.showControls();
             this.updateProgress();
             feather.replace();
         } catch (error) {
             console.error('Error loading questionnaire:', error);
-            const container = document.getElementById('questions-container');
             if (container) {
                 container.innerHTML = `
                     <div class="alert alert-danger" role="alert">
                         <i data-feather="alert-triangle" class="me-2"></i>
-                        ${error.message || 'Failed to load questionnaire. Please refresh the page.'}
+                        ${error.message || 'Failed to load questionnaire. Please try again.'}
+                        <button type="button" class="btn btn-link" onclick="window.location.reload()">Retry</button>
                     </div>
                 `;
                 feather.replace();
@@ -161,7 +153,7 @@ class Questionnaire {
         const answer = Array.from(this.selectedOptions);
         
         try {
-            const response = await fetch('/api/submit-answer', {
+            const response = await fetch('/api/save-answer', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -171,7 +163,7 @@ class Questionnaire {
             });
 
             if (!response.ok) {
-                throw new Error(`Failed to validate answer: ${response.statusText}`);
+                throw new Error(`Failed to save answer: ${response.statusText}`);
             }
             
             const result = await response.json();
@@ -273,8 +265,36 @@ class Questionnaire {
             progressBar.setAttribute('aria-valuenow', progress);
         }
     }
+
+    // Add function to handle navigation confirmation
+    confirmNavigation() {
+        const unsavedChanges = this.selectedOptions.size > 0;
+        if (unsavedChanges) {
+            return confirm('You have unsaved changes. Are you sure you want to leave?');
+        }
+        return true;
+    }
 }
 
+// Handle page navigation
+window.addEventListener('beforeunload', (e) => {
+    const questionnaire = window.questionnaireInstance;
+    if (questionnaire && questionnaire.selectedOptions.size > 0) {
+        e.preventDefault();
+        e.returnValue = '';
+    }
+});
+
 document.addEventListener('DOMContentLoaded', () => {
-    new Questionnaire();
+    window.questionnaireInstance = new Questionnaire();
+    
+    // Add navigation button handlers
+    const navigationButtons = document.querySelectorAll('.navigation-buttons button');
+    navigationButtons.forEach(button => {
+        button.addEventListener('click', (e) => {
+            if (!window.questionnaireInstance.confirmNavigation()) {
+                e.preventDefault();
+            }
+        });
+    });
 });

@@ -1,11 +1,13 @@
 import logging
 from flask import Blueprint, render_template, jsonify, request, redirect, url_for, flash, session
 from flask_login import login_required, current_user
-from extensions import db
+from extensions import db, get_db
 from models import Question, Response, User, Setup, Initiative
 from functools import wraps
 import json
 from datetime import datetime
+from sqlalchemy.exc import OperationalError
+from time import sleep
 
 logging.basicConfig(
     level=logging.INFO,
@@ -204,7 +206,7 @@ def questionnaire(initiative_index=0):
             question_id=1
         ).first()
         
-        if not initiatives_response or not initiatives_response.answer:
+        if not initiatives_response:
             flash('Please select your initiatives first.', 'info')
             return redirect(url_for('routes.initiatives'))
             
@@ -229,11 +231,23 @@ def questionnaire(initiative_index=0):
             flash(f'No questions found for {current_initiative}', 'error')
             return redirect(url_for('routes.initiatives'))
             
+        # Add retry logic for database operations
+        max_retries = 3
+        retry_count = 0
         saved_answers = {}
-        responses = Response.query.filter_by(
-            setup_id=setup.id,
-            is_valid=True
-        ).all()
+        
+        while retry_count < max_retries:
+            try:
+                responses = Response.query.filter_by(
+                    setup_id=setup.id,
+                    is_valid=True
+                ).all()
+                break
+            except OperationalError:
+                retry_count += 1
+                if retry_count == max_retries:
+                    raise
+                sleep(1)
         
         for response in responses:
             if response.question_id != 1:
@@ -358,12 +372,12 @@ def save_answer():
 @routes.route('/assessment_results')
 @login_required
 def assessment_results():
-    setup = get_latest_setup(current_user.id)
-    if not setup:
-        flash('Setup information not found.', 'error')
-        return redirect(url_for('routes.setup'))
-
     try:
+        setup = get_latest_setup(current_user.id)
+        if not setup:
+            flash('Setup information not found.', 'error')
+            return redirect(url_for('routes.setup'))
+
         initiatives_response = Response.query.filter_by(
             setup_id=setup.id,
             question_id=1
@@ -420,6 +434,49 @@ def assessment_results():
         logger.error(f"Error generating assessment results: {str(e)}")
         flash('An error occurred while generating results. Please try again.', 'error')
         return redirect(url_for('routes.initiatives'))
+
+@routes.route('/generate-roadmap')
+@login_required
+def generate_roadmap():
+    try:
+        setup = get_latest_setup(current_user.id)
+        if not setup:
+            flash('Please complete setup first.', 'info')
+            return redirect(url_for('routes.setup'))
+
+        initiatives_response = Response.query.filter_by(
+            setup_id=setup.id,
+            question_id=1
+        ).first()
+
+        if not initiatives_response:
+            flash('Please complete the assessment first.', 'info')
+            return redirect(url_for('routes.initiatives'))
+
+        # Check if all questions are answered
+        selected_initiatives = json.loads(initiatives_response.answer)
+        total_questions = sum(
+            len(Question.query.filter_by(strategic_goal=init).all())
+            for init in selected_initiatives
+        )
+
+        answered = len(Response.query.filter(
+            Response.setup_id == setup.id,
+            Response.is_valid == True,
+            Response.question_id != 1
+        ).all())
+
+        if answered < total_questions:
+            flash('Please complete all questions before generating the roadmap.', 'info')
+            current_initiative_index = session.get('current_initiative_index', 0)
+            return redirect(url_for('routes.questionnaire', initiative_index=current_initiative_index))
+
+        return render_template('roadmap_generation.html')
+
+    except Exception as e:
+        logger.error(f"Error accessing roadmap generation: {str(e)}")
+        flash('An error occurred. Please try again.', 'error')
+        return redirect(url_for('routes.assessment_results'))
 
 @routes.route('/admin/questions')
 @login_required
@@ -550,8 +607,3 @@ def admin_delete_question(question_id):
         flash('Error deleting question', 'error')
         db.session.rollback()
     return redirect(url_for('routes.admin_questions'))
-
-@routes.route('/generate-roadmap')
-@login_required
-def generate_roadmap():
-    return render_template('roadmap_generation.html')
