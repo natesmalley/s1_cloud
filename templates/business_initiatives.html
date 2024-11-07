@@ -34,7 +34,7 @@
                         </div>
                         
                         <div class="selected-count mt-3 mb-4 text-muted">
-                            Selected <span id="selected-count">0</span> of 1-3 required options
+                            <span id="selected-count">Please select at least 1 initiative</span>
                         </div>
                         
                         <div class="d-flex justify-content-between">
@@ -53,11 +53,12 @@ function validateSelection(checkbox) {
     const checkboxes = document.querySelectorAll('input[name="selected_initiatives"]');
     const selectedCount = document.querySelectorAll('input[name="selected_initiatives"]:checked').length;
     const submitBtn = document.getElementById('submit-btn');
+    const countDisplay = document.getElementById('selected-count');
     
     // Update count display
-    document.getElementById('selected-count').textContent = selectedCount;
+    countDisplay.textContent = selectedCount;
     
-    // Disable checkboxes if limit reached
+    // Enable/disable checkboxes based on selection count
     checkboxes.forEach(cb => {
         if (!cb.checked && selectedCount >= 3) {
             cb.disabled = true;
@@ -66,8 +67,17 @@ function validateSelection(checkbox) {
         }
     });
     
-    // Enable/disable submit button
+    // Enable submit button only when 1-3 options are selected
     submitBtn.disabled = selectedCount < 1 || selectedCount > 3;
+    
+    // Update help text
+    if (selectedCount < 1) {
+        countDisplay.textContent = "Please select at least 1 initiative";
+    } else if (selectedCount > 3) {
+        countDisplay.textContent = "Maximum 3 initiatives allowed";
+    } else {
+        countDisplay.textContent = `Selected ${selectedCount} of 1-3 required options`;
+    }
 }
 
 // Initialize on page load

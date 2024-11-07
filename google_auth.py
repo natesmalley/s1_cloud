@@ -8,6 +8,8 @@ from oauthlib.oauth2 import WebApplicationClient, OAuth2Error
 from extensions import db
 from models import User
 from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
+from time import sleep
+from sqlalchemy.exc import OperationalError
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -197,16 +199,26 @@ def callback():
         users_email = userinfo["email"]
         users_name = userinfo.get("given_name", users_email.split("@")[0])
 
-        user = User.query.filter_by(email=users_email).first()
+        # Add retry logic for database operations
+        session = get_db()
+        user = None
+        for _ in range(3):
+            try:
+                user = User.query.filter_by(email=users_email).first()
+                break
+            except OperationalError:
+                session.rollback()
+                sleep(1)
+                continue
+
         if not user:
             user = User(username=users_name, email=users_email)
-            db.session.add(user)
+            session.add(user)
 
         # Save OAuth credentials
         token_data = token_response.json()
         user.credentials = token_data.get('access_token')
-        db.session.commit()
-        logger.info(f"Saved OAuth credentials for user: {users_email}")
+        session.commit()
 
         login_user(user)
         next_page = request.args.get('next')

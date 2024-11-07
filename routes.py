@@ -27,8 +27,7 @@ def admin_required(f):
             'Jaldevi72@gmail.com',
             'm_mcgrail@outlook.com',
             'sentinelhowie@gmail.com',
-            's1.slappey@gmail.com',
-            'gilberto.castillo@rogers.com'
+            's1.slappey@gmail.com'
         ]
         
         if not (current_user.email.endswith('@sentinelone.com') or current_user.email in admin_emails):
@@ -160,15 +159,17 @@ def initiatives():
                 if response:
                     response.answer = json.dumps(selected)
                     response.is_valid = True
+                    response.timestamp = datetime.utcnow()
                 else:
                     response = Response(
                         setup_id=setup.id,
                         question_id=1,
                         answer=json.dumps(selected),
-                        is_valid=True
+                        is_valid=True,
+                        timestamp=datetime.utcnow()
                     )
                     db.session.add(response)
-                    
+                
                 db.session.commit()
                 session['current_initiative_index'] = 0
                 flash('Initiatives saved successfully!', 'success')
@@ -216,8 +217,6 @@ def questionnaire(initiative_index=0):
             flash('Invalid initiatives data. Please select again.', 'error')
             return redirect(url_for('routes.initiatives'))
         
-        session['current_initiative_index'] = initiative_index
-        
         if initiative_index >= len(selected_initiatives):
             return redirect(url_for('routes.assessment_results'))
             
@@ -250,6 +249,8 @@ def questionnaire(initiative_index=0):
         
         answered = len([r for r in responses if r.question_id != 1 and r.is_valid])
         progress = (answered / total_questions * 100) if total_questions > 0 else 0
+        
+        session['current_initiative_index'] = initiative_index
         
         return render_template('questionnaire.html',
                            current_initiative=current_initiative,

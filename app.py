@@ -20,9 +20,17 @@ def create_app():
     app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-key-for-testing')
     app.debug = True  # Enable debug mode
 
-    # Database configuration
+    # Database configuration with SSL parameters
     app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'connect_args': {
+            'sslmode': 'require',
+            'connect_timeout': 10
+        },
+        'pool_pre_ping': True,
+        'pool_recycle': 300
+    }
 
     # Initialize extensions
     db.init_app(app)
