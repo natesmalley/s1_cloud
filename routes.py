@@ -517,93 +517,85 @@ def assessment_results():
     try:
         setup = get_latest_setup(current_user.id)
         if not setup:
-            flash('Setup information not found.', 'error')
+            flash('Please complete setup first.', 'info')
             return redirect(url_for('routes.setup'))
 
-        # Get selected initiatives
+        # Get initiatives response
         initiatives_response = Response.query.filter_by(
             setup_id=setup.id,
             question_id=1
         ).first()
 
         if not initiatives_response:
-            flash('No initiatives found. Please complete the questionnaire first.', 'error')
+            flash('No initiatives found.', 'error')
             return redirect(url_for('routes.initiatives'))
 
-        try:
-            selected_initiatives = json.loads(initiatives_response.answer)
-            if not isinstance(selected_initiatives, list):
-                selected_initiatives = []
-        except (json.JSONDecodeError, TypeError):
-            flash('Invalid initiatives data. Please start over.', 'error')
-            return redirect(url_for('routes.initiatives'))
+        selected_initiatives = json.loads(initiatives_response.answer)
+        results = {}
 
-        # Verify all questions are answered
-        total_questions = 0
-        answered_questions = 0
+        # Process each initiative
         for initiative in selected_initiatives:
-            questions = Question.query.filter_by(strategic_goal=str(initiative)).all()
-            total_questions += len(questions)
-            
+            # Get questions for this initiative
+            questions = Question.query.filter_by(
+                strategic_goal=str(initiative)
+            ).order_by(Question.order).all()
+
+            # Get responses for these questions
+            question_ids = [q.id for q in questions]
             responses = Response.query.filter(
                 Response.setup_id == setup.id,
-                Response.question_id.in_([q.id for q in questions]),
+                Response.question_id.in_(question_ids),
                 Response.is_valid == True
             ).all()
-            answered_questions += len(responses)
 
-        if answered_questions < total_questions:
-            flash('Please complete all questions before viewing results.', 'info')
-            return redirect(url_for('routes.questionnaire', initiative_index=0))
+            # Map responses to questions
+            response_map = {r.question_id: r for r in responses}
 
-        results = {}
-        for initiative in selected_initiatives:
-            questions = Question.query.filter_by(strategic_goal=str(initiative)).all()
-            initiative_results = {
-                'questions': [],
-                'average_maturity': 0,
-                'completion': 0
-            }
-            
+            # Calculate results for this initiative
+            initiative_results = []
             total_maturity = 0
-            answered_count = 0
+            answered_questions = 0
 
             for question in questions:
-                response = Response.query.filter_by(
-                    setup_id=setup.id,
-                    question_id=question.id,
-                    is_valid=True
-                ).first()
-
+                response = response_map.get(question.id)
                 if response:
                     try:
-                        answer_data = json.loads(response.answer)
-                        answer_index = answer_data[0] if isinstance(answer_data, list) else answer_data
-                        maturity_score = answer_index + 1  # Convert 0-based index to 1-5 score
+                        answer_value = json.loads(response.answer)
+                        # Handle both list and single value formats
+                        if isinstance(answer_value, list):
+                            answer_value = answer_value[0]
+                        
+                        # Calculate maturity (add 1 since options are 0-based)
+                        maturity_score = answer_value + 1
                         total_maturity += maturity_score
-                        answered_count += 1
+                        answered_questions += 1
 
-                        initiative_results['questions'].append({
+                        initiative_results.append({
                             'area': question.major_cnapp_area,
                             'question': question.text,
-                            'answer': question.options[answer_index],
+                            'answer': question.options[answer_value].strip(),
                             'maturity_score': maturity_score
                         })
-                    except (json.JSONDecodeError, IndexError, TypeError):
+                    except (json.JSONDecodeError, IndexError) as e:
+                        logger.error(f"Error processing answer for question {question.id}: {e}")
                         continue
 
-            if answered_count > 0:
-                initiative_results['average_maturity'] = round(total_maturity / answered_count, 1)
-                initiative_results['completion'] = (answered_count / len(questions)) * 100
+            # Calculate average maturity for the initiative
+            average_maturity = round(total_maturity / answered_questions, 1) if answered_questions > 0 else 0
+            
+            results[initiative] = {
+                'questions': initiative_results,
+                'average_maturity': average_maturity
+            }
 
-            results[initiative] = initiative_results
-
-        return render_template('assessment_results.html', results=results, setup=setup)
+        return render_template('assessment_results.html',
+                           setup=setup,
+                           results=results)
 
     except Exception as e:
-        logger.error(f"Error generating assessment results: {str(e)}")
-        flash('An error occurred while generating results. Please try again.', 'error')
-        return redirect(url_for('routes.initiatives'))
+        logger.error(f"Error in assessment_results: {str(e)}")
+        flash('An error occurred loading results. Please try again.', 'error')
+        return redirect(url_for('routes.index'))
 
 # Admin routes
 @routes.route('/admin/questions')
