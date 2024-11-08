@@ -310,34 +310,11 @@ def questionnaire(initiative_index=0):
             return redirect(url_for('routes.initiatives'))
         
         if initiative_index >= len(selected_initiatives):
-            # Check if all questions are answered
-            total_questions = sum(
-                len(Question.query.filter_by(strategic_goal=str(init)).all())
-                for init in selected_initiatives
-            )
-            
-            answered = len(Response.query.filter(
-                Response.setup_id == setup.id,
-                Response.is_valid == True,
-                Response.question_id != 1
-            ).all())
-            
-            if answered < total_questions:
-                # Redirect to first unanswered initiative
-                for idx, initiative in enumerate(selected_initiatives):
-                    questions = Question.query.filter_by(strategic_goal=str(initiative)).all()
-                    responses = Response.query.filter(
-                        Response.setup_id == setup.id,
-                        Response.question_id.in_([q.id for q in questions]),
-                        Response.is_valid == True
-                    ).all()
-                    
-                    if len(responses) < len(questions):
-                        return redirect(url_for('routes.questionnaire', initiative_index=idx))
-            
             return redirect(url_for('routes.assessment_results'))
             
         current_initiative = selected_initiatives[initiative_index]
+        
+        # Ensure string comparison for strategic goal
         questions = Question.query.filter_by(
             strategic_goal=str(current_initiative)
         ).order_by(Question.order).all()
@@ -349,7 +326,6 @@ def questionnaire(initiative_index=0):
         # Add retry logic for database operations
         retry_count = 0
         saved_answers = {}
-        
         while retry_count < max_retries:
             try:
                 responses = Response.query.filter_by(
@@ -358,22 +334,26 @@ def questionnaire(initiative_index=0):
                 ).all()
                 break
             except OperationalError:
-                retry_count += 1
-                if retry_count == max_retries:
+                if retry_count == max_retries - 1:
                     raise
+                retry_count += 1
                 sleep(1)
         
         for response in responses:
-            if response.question_id != 1:
+            if response.question_id != 1:  # Skip initiatives response
                 try:
                     answer_data = json.loads(response.answer)
-                    saved_answers[response.question_id] = answer_data[0] if isinstance(answer_data, list) else answer_data
+                    saved_answers[response.question_id] = (
+                        answer_data[0] if isinstance(answer_data, list) else answer_data
+                    )
                 except (json.JSONDecodeError, TypeError):
                     continue
         
-        total_questions = sum(len(Question.query.filter_by(
-            strategic_goal=str(init)
-        ).all()) for init in selected_initiatives)
+        # Calculate progress across all initiatives
+        total_questions = sum(
+            len(Question.query.filter_by(strategic_goal=str(init)).all())
+            for init in selected_initiatives
+        )
         
         answered = len([r for r in responses if r.question_id != 1 and r.is_valid])
         progress = (answered / total_questions * 100) if total_questions > 0 else 0
@@ -385,12 +365,15 @@ def questionnaire(initiative_index=0):
                            questions={current_initiative: questions},
                            saved_answers=saved_answers,
                            progress=progress,
-                           prev_url=url_for('routes.initiatives') if initiative_index == 0 else url_for('routes.questionnaire', initiative_index=initiative_index-1),
-                           next_url=url_for('routes.assessment_results') if initiative_index >= len(selected_initiatives)-1 else url_for('routes.questionnaire', initiative_index=initiative_index+1))
+                           prev_url=url_for('routes.initiatives') if initiative_index == 0 
+                                  else url_for('routes.questionnaire', initiative_index=initiative_index-1),
+                           next_url=url_for('routes.questionnaire', initiative_index=initiative_index+1) 
+                                  if initiative_index < len(selected_initiatives)-1 
+                                  else url_for('routes.assessment_results'))
                            
     except Exception as e:
-        logger.error(f"Error loading questionnaire: {str(e)}")
-        flash('An error occurred while loading the questionnaire. Please try again.', 'error')
+        logger.error(f"Error in questionnaire route: {str(e)}")
+        flash('An error occurred. Please try again.', 'error')
         return redirect(url_for('routes.initiatives'))
 
 @routes.route('/api/save-answer', methods=['POST'])

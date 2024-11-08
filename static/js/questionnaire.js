@@ -9,6 +9,7 @@ class Questionnaire {
         this.initialize();
     }
 
+    // Retain all original methods from the previous implementation
     showError(message, isRetryable = true) {
         const container = document.getElementById('questions-container');
         if (container) {
@@ -296,6 +297,7 @@ class Questionnaire {
     }
 }
 
+// Retain the original window and document event listeners
 window.addEventListener('beforeunload', (e) => {
     const questionnaire = window.questionnaireInstance;
     if (questionnaire && questionnaire.selectedOptions.size > 0) {
@@ -316,3 +318,64 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 });
+
+// Added new saveAnswer function from the modified code
+async function saveAnswer(questionId, value) {
+    if (window.savingInProgress) return;
+    window.savingInProgress = true;
+    
+    const loadingIndicator = document.getElementById(`loading_${questionId}`);
+    const validationElement = document.getElementById(`validation_${questionId}`);
+    
+    if (loadingIndicator) loadingIndicator.style.display = 'inline-block';
+    if (validationElement) validationElement.textContent = '';
+    
+    try {
+        const response = await fetch('/api/save-answer', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                question_id: questionId,
+                answer: parseInt(value)
+            })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Error response:', errorText);
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            if (validationElement) validationElement.textContent = '';
+            
+            const progressBar = document.querySelector('.progress-bar');
+            const progressText = document.querySelector('.progress-container .text-muted');
+            
+            if (progressBar && progressText) {
+                const progress = Math.round(data.progress);
+                progressBar.style.width = `${progress}%`;
+                progressBar.setAttribute('aria-valuenow', progress);
+                progressText.textContent = `${progress}% Complete`;
+            }
+        } else {
+            throw new Error(data.message || 'Failed to save answer');
+        }
+    } catch (error) {
+        console.error('Error saving answer:', error);
+        if (validationElement) {
+            validationElement.innerHTML = `
+                <div class="alert alert-danger">
+                    ${error.message}
+                    <button onclick="saveAnswer(${questionId}, ${value})" class="btn btn-link p-0 ms-2">Retry</button>
+                </div>`;
+        }
+    } finally {
+        if (loadingIndicator) loadingIndicator.style.display = 'none';
+        window.savingInProgress = false;
+    }
+}
