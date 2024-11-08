@@ -466,7 +466,6 @@ def assessment_results():
             flash('Please complete setup first.', 'info')
             return redirect(url_for('routes.setup'))
 
-        # Get initiatives response
         initiatives_response = Response.query.filter_by(
             setup_id=setup.id,
             question_id=1
@@ -514,25 +513,25 @@ def assessment_results():
 
             # Map responses to questions
             response_map = {r.question_id: r for r in responses}
-            
+
             # Calculate results for this initiative
             initiative_results = []
             total_maturity = 0
-            answered_questions = 0
+            question_count = 0
 
             for question in questions:
                 response = response_map.get(question.id)
                 if response:
                     try:
-                        answer_value = json.loads(response.answer)
-                        # Handle both list and single value formats
-                        if isinstance(answer_value, list):
-                            answer_value = answer_value[0]
-                        
-                        # Calculate maturity (add 1 since options are 0-based)
+                        # Parse the answer value from JSON
+                        answer_data = json.loads(response.answer)
+                        answer_value = answer_data[0] if isinstance(answer_data, list) else answer_data
+
+                        # Calculate maturity score (1-5 scale)
                         maturity_score = answer_value + 1
+
                         total_maturity += maturity_score
-                        answered_questions += 1
+                        question_count += 1
 
                         initiative_results.append({
                             'area': question.major_cnapp_area,
@@ -544,9 +543,9 @@ def assessment_results():
                         logger.error(f"Error processing answer for question {question.id}: {e}")
                         continue
 
-            # Calculate average maturity for the initiative
-            average_maturity = round(total_maturity / answered_questions, 1) if answered_questions > 0 else 0
-            
+            # Calculate average maturity for this initiative
+            average_maturity = round(total_maturity / question_count, 1) if question_count > 0 else 0
+
             results[initiative] = {
                 'questions': initiative_results,
                 'average_maturity': average_maturity
@@ -565,3 +564,112 @@ def assessment_results():
         logger.error(f"Error in assessment_results: {str(e)}")
         flash('An error occurred loading results. Please try again.', 'error')
         return redirect(url_for('routes.index'))
+
+# Admin routes for initiatives
+@routes.route('/admin/initiatives')
+@login_required
+def admin_initiatives():
+    # Admin authorization check
+    if not current_user.email.endswith('@sentinelone.com') and current_user.email not in [
+        'mpsmalls11@gmail.com', 'jaldevi72@gmail.com', 
+        'm_mcgrail@outlook.com', 'gcastill0portfolio@gmail.com'
+    ]:
+        flash('Unauthorized access', 'error')
+        return redirect(url_for('routes.index'))
+        
+    initiatives = Initiative.query.order_by(Initiative.order).all()
+    return render_template('admin/initiatives.html', initiatives=initiatives)
+
+@routes.route('/admin/initiatives/add', methods=['GET', 'POST'])
+@login_required
+def admin_add_initiative():
+    # Admin authorization check
+    if not current_user.email.endswith('@sentinelone.com') and current_user.email not in [
+        'mpsmalls11@gmail.com', 'jaldevi72@gmail.com', 
+        'm_mcgrail@outlook.com', 'gcastill0portfolio@gmail.com'
+    ]:
+        flash('Unauthorized access', 'error')
+        return redirect(url_for('routes.index'))
+        
+    if request.method == 'POST':
+        title = request.form.get('title')
+        description = request.form.get('description')
+        
+        if not title or not description:
+            flash('All fields are required', 'error')
+            return render_template('admin/initiative_form.html')
+            
+        initiative = Initiative(
+            title=title,
+            description=description,
+            order=Initiative.query.count()
+        )
+        
+        try:
+            db.session.add(initiative)
+            db.session.commit()
+            flash('Initiative added successfully', 'success')
+            return redirect(url_for('routes.admin_initiatives'))
+        except Exception as e:
+            db.session.rollback()
+            flash('Error adding initiative', 'error')
+            return render_template('admin/initiative_form.html')
+            
+    return render_template('admin/initiative_form.html')
+
+@routes.route('/admin/initiatives/<int:initiative_id>/edit', methods=['GET', 'POST'])
+@login_required
+def admin_edit_initiative(initiative_id):
+    # Admin authorization check
+    if not current_user.email.endswith('@sentinelone.com') and current_user.email not in [
+        'mpsmalls11@gmail.com', 'jaldevi72@gmail.com', 
+        'm_mcgrail@outlook.com', 'gcastill0portfolio@gmail.com'
+    ]:
+        flash('Unauthorized access', 'error')
+        return redirect(url_for('routes.index'))
+        
+    initiative = Initiative.query.get_or_404(initiative_id)
+    
+    if request.method == 'POST':
+        title = request.form.get('title')
+        description = request.form.get('description')
+        
+        if not title or not description:
+            flash('All fields are required', 'error')
+            return render_template('admin/initiative_form.html', initiative=initiative)
+            
+        try:
+            initiative.title = title
+            initiative.description = description
+            db.session.commit()
+            flash('Initiative updated successfully', 'success')
+            return redirect(url_for('routes.admin_initiatives'))
+        except Exception as e:
+            db.session.rollback()
+            flash('Error updating initiative', 'error')
+            return render_template('admin/initiative_form.html', initiative=initiative)
+            
+    return render_template('admin/initiative_form.html', initiative=initiative)
+
+@routes.route('/admin/initiatives/<int:initiative_id>/delete', methods=['POST'])
+@login_required
+def admin_delete_initiative(initiative_id):
+    # Admin authorization check
+    if not current_user.email.endswith('@sentinelone.com') and current_user.email not in [
+        'mpsmalls11@gmail.com', 'jaldevi72@gmail.com', 
+        'm_mcgrail@outlook.com', 'gcastill0portfolio@gmail.com'
+    ]:
+        flash('Unauthorized access', 'error')
+        return redirect(url_for('routes.index'))
+        
+    initiative = Initiative.query.get_or_404(initiative_id)
+    
+    try:
+        db.session.delete(initiative)
+        db.session.commit()
+        flash('Initiative deleted successfully', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash('Error deleting initiative', 'error')
+        
+    return redirect(url_for('routes.admin_initiatives'))
