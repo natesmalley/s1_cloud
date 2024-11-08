@@ -5,33 +5,55 @@ class Questionnaire {
         this.answers = new Map();
         this.validationErrors = new Map();
         this.selectedOptions = new Set();
+        this.isLoading = false;
         this.initialize();
     }
 
-    showError(message) {
+    showError(message, isRetryable = true) {
         const container = document.getElementById('questions-container');
         if (container) {
             container.innerHTML = `
                 <div class="alert alert-danger" role="alert">
-                    <i data-feather="alert-triangle" class="me-2"></i>
-                    ${message}
-                    <button type="button" class="btn btn-link" onclick="window.location.reload()">Retry</button>
+                    <div class="d-flex align-items-center">
+                        <i data-feather="alert-triangle" class="me-2"></i>
+                        <div>
+                            ${message}
+                            ${isRetryable ? `
+                                <button type="button" class="btn btn-link p-0 ms-2" onclick="window.location.reload()">
+                                    <i data-feather="refresh-cw" class="me-1"></i>Retry
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
                 </div>
             `;
             feather.replace();
         }
     }
 
+    showLoading(message = 'Loading...') {
+        const container = document.getElementById('questions-container');
+        if (container) {
+            container.innerHTML = `
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="text-muted">${message}</p>
+                </div>
+            `;
+        }
+    }
+
     async initialize() {
         try {
+            this.isLoading = true;
             const container = document.getElementById('questions-container');
             if (!container) {
-                console.warn('Questions container not found');
-                return;
+                throw new Error('Questions container not found');
             }
 
-            // Add loading state
-            container.innerHTML = '<div class="text-center"><div class="spinner-border"></div><p>Loading questions...</p></div>';
+            this.showLoading('Loading questions...');
 
             const [questionsResponse, answersResponse] = await Promise.all([
                 fetch('/api/questions').catch(error => {
@@ -58,7 +80,6 @@ class Questionnaire {
             
             this.questions = questionsData;
             
-            // Initialize answers map with saved answers
             if (savedAnswers && Array.isArray(savedAnswers)) {
                 savedAnswers.forEach(answer => {
                     if (answer && answer.question_id) {
@@ -75,28 +96,23 @@ class Questionnaire {
             feather.replace();
         } catch (error) {
             console.error('Error loading questionnaire:', error);
-            if (container) {
-                container.innerHTML = `
-                    <div class="alert alert-danger" role="alert">
-                        <i data-feather="alert-triangle" class="me-2"></i>
-                        ${error.message || 'Failed to load questionnaire. Please try again.'}
-                        <button type="button" class="btn btn-link" onclick="window.location.reload()">Retry</button>
-                    </div>
-                `;
-                feather.replace();
-            }
+            this.showError(error.message || 'Failed to load questionnaire');
+        } finally {
+            this.isLoading = false;
         }
     }
 
     renderQuestion() {
+        if (this.isLoading) return;
+
         const container = document.getElementById('questions-container');
-        if (!container) {
-            console.error('Questions container not found');
-            return;
-        }
+        if (!container) return;
 
         const question = this.questions[this.currentIndex];
-        if (!question) return;
+        if (!question) {
+            this.showError('No question found', false);
+            return;
+        }
 
         container.innerHTML = `
             <div class="card mb-4">
@@ -108,11 +124,13 @@ class Questionnaire {
                     <div class="initiatives-container">
                         ${this.renderQuestionInput(question)}
                     </div>
-                    <div class="selected-count mt-3 text-muted">
-                        Selected ${this.selectedOptions.size} of ${question.validation_rules?.min_count || 1}-${question.validation_rules?.max_count || 3} required options
-                    </div>
-                    <div id="validation_message" class="mt-2 text-danger">
-                        ${this.validationErrors.get(question.id) || ''}
+                    <div class="validation-feedback mt-3">
+                        <div class="selected-count text-muted">
+                            ${this.getSelectionCountText(question)}
+                        </div>
+                        <div id="validation_message" class="mt-2 text-danger">
+                            ${this.validationErrors.get(question.id) || ''}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -141,6 +159,20 @@ class Questionnaire {
             `).join('');
         }
         return '';
+    }
+
+    getSelectionCountText(question) {
+        const minCount = question.validation_rules?.min_count || 1;
+        const maxCount = question.validation_rules?.max_count || 1;
+        const currentCount = this.selectedOptions.size;
+        
+        if (currentCount < minCount) {
+            return `Please select at least ${minCount} option${minCount > 1 ? 's' : ''}`;
+        } else if (currentCount > maxCount) {
+            return `Maximum ${maxCount} option${maxCount > 1 ? 's' : ''} allowed`;
+        } else {
+            return `Selected ${currentCount} of ${minCount}-${maxCount} required options`;
+        }
     }
 
     async validateCurrentAnswer() {
@@ -192,16 +224,13 @@ class Questionnaire {
     }
 
     addOptionClickHandlers() {
-        // Initialize tooltips
         const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
         const tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
             return new bootstrap.Tooltip(tooltipTriggerEl)
         });
 
-        // Replace Feather icons
         feather.replace();
 
-        // Add click handlers for checkboxes
         const checkboxes = document.querySelectorAll('.initiative-option input[type="checkbox"]');
         checkboxes.forEach(checkbox => {
             checkbox.addEventListener('change', async (event) => {
@@ -217,7 +246,6 @@ class Questionnaire {
                     this.selectedOptions.delete(optionTitle);
                 }
 
-                // Update disabled state of other checkboxes
                 checkboxes.forEach(cb => {
                     if (!cb.checked) {
                         cb.disabled = this.selectedOptions.size >= 3;
@@ -231,14 +259,7 @@ class Questionnaire {
                     this.showError('Failed to save your selection. Please try again.');
                 }
                 
-                // Update the selected count display
-                const countElement = document.querySelector('.selected-count');
-                if (countElement) {
-                    const question = this.questions[this.currentIndex];
-                    const minCount = question.validation_rules?.min_count || 1;
-                    const maxCount = question.validation_rules?.max_count || 3;
-                    countElement.textContent = `Selected ${this.selectedOptions.size} of ${minCount}-${maxCount} required options`;
-                }
+                this.renderQuestion();
             });
         });
     }
@@ -266,7 +287,6 @@ class Questionnaire {
         }
     }
 
-    // Add function to handle navigation confirmation
     confirmNavigation() {
         const unsavedChanges = this.selectedOptions.size > 0;
         if (unsavedChanges) {
@@ -276,7 +296,6 @@ class Questionnaire {
     }
 }
 
-// Handle page navigation
 window.addEventListener('beforeunload', (e) => {
     const questionnaire = window.questionnaireInstance;
     if (questionnaire && questionnaire.selectedOptions.size > 0) {
@@ -288,7 +307,6 @@ window.addEventListener('beforeunload', (e) => {
 document.addEventListener('DOMContentLoaded', () => {
     window.questionnaireInstance = new Questionnaire();
     
-    // Add navigation button handlers
     const navigationButtons = document.querySelectorAll('.navigation-buttons button');
     navigationButtons.forEach(button => {
         button.addEventListener('click', (e) => {

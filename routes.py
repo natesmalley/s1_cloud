@@ -10,6 +10,9 @@ from sqlalchemy.exc import OperationalError
 from time import sleep
 from google_drive import GoogleDriveService
 
+# Global configuration
+max_retries = 3
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -41,7 +44,6 @@ def admin_required(f):
     return decorated_function
 
 def get_latest_setup(user_id=None, leader_email=None):
-    max_retries = 3
     retry_count = 0
     
     while retry_count < max_retries:
@@ -166,7 +168,6 @@ def setup():
                 created_at=datetime.utcnow()
             )
             
-            max_retries = 3
             retry_count = 0
             while retry_count < max_retries:
                 try:
@@ -205,7 +206,6 @@ def initiatives():
             flash('Setup information not found.', 'error')
             return redirect(url_for('routes.setup'))
         
-        max_retries = 3
         retry_count = 0
         while retry_count < max_retries:
             try:
@@ -447,7 +447,6 @@ def save_answer():
                 'message': 'Answer out of range'
             }), 400
 
-        max_retries = 3
         retry_count = 0
         while retry_count < max_retries:
             try:
