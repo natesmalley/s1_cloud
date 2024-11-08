@@ -21,43 +21,8 @@ logger = logging.getLogger(__name__)
 
 routes = Blueprint('routes', __name__)
 
-def admin_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated:
-            flash('Please login first.', 'error')
-            return redirect(url_for('google_auth.login'))
-            
-        admin_emails = [
-            'mpsmalls11@gmail.com',
-            'jaldevi72@gmail.com',
-            'm_mcgrail@outlook.com',
-            'sentinelhowie@gmail.com',
-            's1.slappey@gmail.com',
-            'gcastill0portfolio@gmail.com'
-        ]
-        
-        if not (current_user.email.endswith('@sentinelone.com') or current_user.email in admin_emails):
-            flash('Admin access required.', 'error')
-            return redirect(url_for('routes.index'))
-        return f(*args, **kwargs)
-    return decorated_function
-
-def get_latest_setup(user_id=None, leader_email=None):
-    retry_count = 0
-    
-    while retry_count < max_retries:
-        try:
-            if leader_email:
-                return Setup.query.filter_by(leader_email=leader_email).order_by(Setup.created_at.desc()).first()
-            return Setup.query.filter_by(user_id=user_id).order_by(Setup.created_at.desc()).first()
-        except OperationalError:
-            if retry_count == max_retries - 1:
-                logger.error("Failed to get latest setup after multiple retries")
-                return None
-            retry_count += 1
-            sleep(1)
-    return None
+def get_latest_setup(user_id):
+    return Setup.query.filter_by(user_id=user_id).order_by(Setup.created_at.desc()).first()
 
 def check_setup_required():
     if current_user.is_authenticated:
@@ -206,19 +171,10 @@ def initiatives():
             flash('Setup information not found.', 'error')
             return redirect(url_for('routes.setup'))
         
-        retry_count = 0
-        while retry_count < max_retries:
-            try:
-                initiatives = Initiative.query.order_by(Initiative.order).all()
-                if not initiatives:
-                    flash('No initiatives available. Please contact an administrator.', 'error')
-                    return redirect(url_for('routes.index'))
-                break
-            except OperationalError:
-                if retry_count == max_retries - 1:
-                    raise
-                retry_count += 1
-                sleep(1)
+        initiatives = Initiative.query.order_by(Initiative.order).all()
+        if not initiatives:
+            flash('No initiatives available. Please contact an administrator.', 'error')
+            return redirect(url_for('routes.index'))
             
         response = Response.query.filter_by(
             setup_id=setup.id,
@@ -323,21 +279,11 @@ def questionnaire(initiative_index=0):
             flash(f'No questions found for {current_initiative}', 'error')
             return redirect(url_for('routes.initiatives'))
             
-        # Add retry logic for database operations
-        retry_count = 0
         saved_answers = {}
-        while retry_count < max_retries:
-            try:
-                responses = Response.query.filter_by(
-                    setup_id=setup.id,
-                    is_valid=True
-                ).all()
-                break
-            except OperationalError:
-                if retry_count == max_retries - 1:
-                    raise
-                retry_count += 1
-                sleep(1)
+        responses = Response.query.filter_by(
+            setup_id=setup.id,
+            is_valid=True
+        ).all()
         
         for response in responses:
             if response.question_id != 1:  # Skip initiatives response
@@ -527,11 +473,21 @@ def assessment_results():
         ).first()
 
         if not initiatives_response:
-            flash('No initiatives found.', 'error')
+            flash('No initiatives found. Please select your initiatives.', 'error')
             return redirect(url_for('routes.initiatives'))
 
-        selected_initiatives = json.loads(initiatives_response.answer)
+        try:
+            selected_initiatives = json.loads(initiatives_response.answer)
+            if not isinstance(selected_initiatives, list) or not selected_initiatives:
+                flash('Invalid initiatives data. Please select your initiatives again.', 'error')
+                return redirect(url_for('routes.initiatives'))
+        except (json.JSONDecodeError, TypeError):
+            flash('Invalid initiatives data. Please select your initiatives again.', 'error')
+            return redirect(url_for('routes.initiatives'))
+
         results = {}
+        total_questions = 0
+        total_answers = 0
 
         # Process each initiative
         for initiative in selected_initiatives:
@@ -539,6 +495,12 @@ def assessment_results():
             questions = Question.query.filter_by(
                 strategic_goal=str(initiative)
             ).order_by(Question.order).all()
+
+            if not questions:
+                logger.warning(f"No questions found for initiative: {initiative}")
+                continue
+
+            total_questions += len(questions)
 
             # Get responses for these questions
             question_ids = [q.id for q in questions]
@@ -548,9 +510,11 @@ def assessment_results():
                 Response.is_valid == True
             ).all()
 
+            total_answers += len(responses)
+
             # Map responses to questions
             response_map = {r.question_id: r for r in responses}
-
+            
             # Calculate results for this initiative
             initiative_results = []
             total_maturity = 0
@@ -576,7 +540,7 @@ def assessment_results():
                             'answer': question.options[answer_value].strip(),
                             'maturity_score': maturity_score
                         })
-                    except (json.JSONDecodeError, IndexError) as e:
+                    except (json.JSONDecodeError, IndexError, TypeError) as e:
                         logger.error(f"Error processing answer for question {question.id}: {e}")
                         continue
 
@@ -588,6 +552,11 @@ def assessment_results():
                 'average_maturity': average_maturity
             }
 
+        # Check if all questions are answered
+        if total_answers < total_questions:
+            flash('Please complete all questions before viewing results.', 'info')
+            return redirect(url_for('routes.questionnaire', initiative_index=0))
+
         return render_template('assessment_results.html',
                            setup=setup,
                            results=results)
@@ -596,134 +565,3 @@ def assessment_results():
         logger.error(f"Error in assessment_results: {str(e)}")
         flash('An error occurred loading results. Please try again.', 'error')
         return redirect(url_for('routes.index'))
-
-# Admin routes
-@routes.route('/admin/questions')
-@login_required
-@admin_required
-def admin_questions():
-    questions = Question.query.order_by(Question.strategic_goal, Question.order).all()
-    return render_template('admin/questions.html', questions=questions)
-
-@routes.route('/admin/initiatives')
-@login_required
-@admin_required
-def admin_initiatives():
-    initiatives = Initiative.query.order_by(Initiative.order).all()
-    return render_template('admin/initiatives.html', initiatives=initiatives)
-
-@routes.route('/admin/initiatives/add', methods=['GET', 'POST'])
-@login_required
-@admin_required
-def admin_add_initiative():
-    if request.method == 'POST':
-        try:
-            initiative = Initiative(
-                title=request.form['title'],
-                description=request.form['description'],
-                order=0  # Will be last in order
-            )
-            db.session.add(initiative)
-            db.session.commit()
-            flash('Initiative added successfully!', 'success')
-            return redirect(url_for('routes.admin_initiatives'))
-        except Exception as e:
-            logger.error(f"Error adding initiative: {str(e)}")
-            flash('Error adding initiative', 'error')
-            db.session.rollback()
-    return render_template('admin/initiative_form.html')
-
-@routes.route('/admin/initiatives/<int:initiative_id>/edit', methods=['GET', 'POST'])
-@login_required
-@admin_required
-def admin_edit_initiative(initiative_id):
-    initiative = Initiative.query.get_or_404(initiative_id)
-    if request.method == 'POST':
-        try:
-            initiative.title = request.form['title']
-            initiative.description = request.form['description']
-            db.session.commit()
-            flash('Initiative updated successfully!', 'success')
-            return redirect(url_for('routes.admin_initiatives'))
-        except Exception as e:
-            logger.error(f"Error updating initiative: {str(e)}")
-            flash('Error updating initiative', 'error')
-            db.session.rollback()
-    return render_template('admin/initiative_form.html', initiative=initiative)
-
-@routes.route('/admin/initiatives/<int:initiative_id>/delete', methods=['POST'])
-@login_required
-@admin_required
-def admin_delete_initiative(initiative_id):
-    initiative = Initiative.query.get_or_404(initiative_id)
-    try:
-        db.session.delete(initiative)
-        db.session.commit()
-        flash('Initiative deleted successfully!', 'success')
-    except Exception as e:
-        logger.error(f"Error deleting initiative: {str(e)}")
-        flash('Error deleting initiative', 'error')
-        db.session.rollback()
-    return redirect(url_for('routes.admin_initiatives'))
-
-@routes.route('/admin/questions/add', methods=['GET', 'POST'])
-@login_required
-@admin_required
-def admin_add_question():
-    if request.method == 'POST':
-        try:
-            options = [opt.strip() for opt in request.form['options'].split(',')]
-            question = Question(
-                strategic_goal=request.form['strategic_goal'],
-                major_cnapp_area=request.form['major_cnapp_area'],
-                text=request.form['text'],
-                options=options,
-                weighting_score=request.form['weighting_score'],
-                order=int(request.form['order'])
-            )
-            db.session.add(question)
-            db.session.commit()
-            flash('Question added successfully!', 'success')
-            return redirect(url_for('routes.admin_questions'))
-        except Exception as e:
-            logger.error(f"Error adding question: {str(e)}")
-            flash('Error adding question', 'error')
-            db.session.rollback()
-    return render_template('admin/question_form.html')
-
-@routes.route('/admin/questions/<int:question_id>/edit', methods=['GET', 'POST'])
-@login_required
-@admin_required
-def admin_edit_question(question_id):
-    question = Question.query.get_or_404(question_id)
-    if request.method == 'POST':
-        try:
-            question.strategic_goal = request.form['strategic_goal']
-            question.major_cnapp_area = request.form['major_cnapp_area']
-            question.text = request.form['text']
-            question.options = [opt.strip() for opt in request.form['options'].split(',')]
-            question.weighting_score = request.form['weighting_score']
-            question.order = int(request.form['order'])
-            db.session.commit()
-            flash('Question updated successfully!', 'success')
-            return redirect(url_for('routes.admin_questions'))
-        except Exception as e:
-            logger.error(f"Error updating question: {str(e)}")
-            flash('Error updating question', 'error')
-            db.session.rollback()
-    return render_template('admin/question_form.html', question=question)
-
-@routes.route('/admin/questions/<int:question_id>/delete', methods=['POST'])
-@login_required
-@admin_required
-def admin_delete_question(question_id):
-    question = Question.query.get_or_404(question_id)
-    try:
-        db.session.delete(question)
-        db.session.commit()
-        flash('Question deleted successfully!', 'success')
-    except Exception as e:
-        logger.error(f"Error deleting question: {str(e)}")
-        flash('Error deleting question', 'error')
-        db.session.rollback()
-    return redirect(url_for('routes.admin_questions'))
