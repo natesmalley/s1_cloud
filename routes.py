@@ -8,6 +8,7 @@ import json
 from datetime import datetime
 from sqlalchemy.exc import OperationalError
 from time import sleep
+from google_drive import GoogleDriveService
 
 logging.basicConfig(
     level=logging.INFO,
@@ -61,19 +62,40 @@ def index():
     if current_user.is_authenticated:
         try:
             setup = get_latest_setup(current_user.id)
-            if setup:
-                initiatives_response = Response.query.filter_by(
-                    setup_id=setup.id,
-                    question_id=1
-                ).order_by(Response.timestamp.desc()).first()
+            if not setup:
+                return redirect(url_for('routes.setup'))
                 
-                if initiatives_response:
-                    return redirect(url_for('routes.questionnaire', initiative_index=0))
+            initiatives_response = Response.query.filter_by(
+                setup_id=setup.id,
+                question_id=1
+            ).order_by(Response.timestamp.desc()).first()
+            
+            if not initiatives_response:
                 return redirect(url_for('routes.initiatives'))
-            return redirect(url_for('routes.setup'))
+            
+            # Check if all questions are answered for selected initiatives
+            selected_initiatives = json.loads(initiatives_response.answer)
+            total_questions = sum(
+                len(Question.query.filter_by(strategic_goal=str(init)).all())
+                for init in selected_initiatives
+            )
+            
+            answered = len(Response.query.filter(
+                Response.setup_id == setup.id,
+                Response.is_valid == True,
+                Response.question_id != 1
+            ).all())
+            
+            if answered < total_questions:
+                initiative_index = session.get('current_initiative_index', 0)
+                return redirect(url_for('routes.questionnaire', initiative_index=initiative_index))
+            
+            return redirect(url_for('routes.assessment_results'))
+            
         except Exception as e:
             logger.error(f"Error in index route: {str(e)}")
             flash('An error occurred. Please try again.', 'error')
+            db.session.rollback()
     return render_template('index.html')
 
 @routes.route('/setup', methods=['GET', 'POST'])
@@ -192,7 +214,6 @@ def initiatives():
         flash('An error occurred. Please try again.', 'error')
         return redirect(url_for('routes.index'))
 
-@routes.route('/questionnaire')
 @routes.route('/questionnaire/<int:initiative_index>')
 @login_required
 def questionnaire(initiative_index=0):
@@ -216,16 +237,41 @@ def questionnaire(initiative_index=0):
             if not isinstance(selected_initiatives, list) or not selected_initiatives:
                 flash('Invalid initiatives data. Please select again.', 'error')
                 return redirect(url_for('routes.initiatives'))
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, TypeError):
             flash('Invalid initiatives data. Please select again.', 'error')
             return redirect(url_for('routes.initiatives'))
         
         if initiative_index >= len(selected_initiatives):
+            # Check if all questions are answered
+            total_questions = sum(
+                len(Question.query.filter_by(strategic_goal=str(init)).all())
+                for init in selected_initiatives
+            )
+            
+            answered = len(Response.query.filter(
+                Response.setup_id == setup.id,
+                Response.is_valid == True,
+                Response.question_id != 1
+            ).all())
+            
+            if answered < total_questions:
+                # Redirect to first unanswered initiative
+                for idx, initiative in enumerate(selected_initiatives):
+                    questions = Question.query.filter_by(strategic_goal=str(initiative)).all()
+                    responses = Response.query.filter(
+                        Response.setup_id == setup.id,
+                        Response.question_id.in_([q.id for q in questions]),
+                        Response.is_valid == True
+                    ).all()
+                    
+                    if len(responses) < len(questions):
+                        return redirect(url_for('routes.questionnaire', initiative_index=idx))
+            
             return redirect(url_for('routes.assessment_results'))
             
         current_initiative = selected_initiatives[initiative_index]
         questions = Question.query.filter_by(
-            strategic_goal=current_initiative
+            strategic_goal=str(current_initiative)
         ).order_by(Question.order).all()
         
         if not questions:
@@ -259,7 +305,7 @@ def questionnaire(initiative_index=0):
                     continue
         
         total_questions = sum(len(Question.query.filter_by(
-            strategic_goal=init
+            strategic_goal=str(init)
         ).all()) for init in selected_initiatives)
         
         answered = len([r for r in responses if r.question_id != 1 and r.is_valid])
@@ -343,9 +389,21 @@ def save_answer():
                 'message': 'No initiatives found'
             }), 404
 
+        # Parse selected initiatives as strings
         selected_initiatives = json.loads(initiatives_response.answer)
+        if not isinstance(selected_initiatives, list):
+            return jsonify({
+                'status': 'error',
+                'message': 'Invalid initiatives data'
+            }), 400
+
+        # Ensure initiative values are strings
+        selected_initiatives = [str(init) if not isinstance(init, str) else init 
+                              for init in selected_initiatives]
+
+        # Calculate total questions using string comparison
         total_questions = sum(
-            len(Question.query.filter_by(strategic_goal=init).all())
+            len(Question.query.filter_by(strategic_goal=str(init)).all())
             for init in selected_initiatives
         )
 
@@ -392,6 +450,8 @@ def assessment_results():
         results = {}
 
         for initiative in selected_initiatives:
+            # Ensure initiative is a string
+            initiative = str(initiative)
             questions = Question.query.filter_by(strategic_goal=initiative).all()
             initiative_results = {
                 'questions': [],
@@ -427,13 +487,11 @@ def assessment_results():
 
             results[initiative] = initiative_results
 
-        return render_template('assessment_results.html',
-                           setup=setup,
-                           results=results)
+        return render_template('assessment_results.html', results=results, setup=setup)
 
     except Exception as e:
         logger.error(f"Error generating assessment results: {str(e)}")
-        flash('An error occurred while generating results. Please try again.', 'error')
+        flash('An error occurred while generating results.', 'error')
         return redirect(url_for('routes.initiatives'))
 
 @routes.route('/generate-roadmap')
@@ -457,7 +515,7 @@ def generate_roadmap():
         # Check if all questions are answered
         selected_initiatives = json.loads(initiatives_response.answer)
         total_questions = sum(
-            len(Question.query.filter_by(strategic_goal=init).all())
+            len(Question.query.filter_by(strategic_goal=str(init)).all())
             for init in selected_initiatives
         )
 
