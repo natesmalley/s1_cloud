@@ -41,13 +41,21 @@ def admin_required(f):
     return decorated_function
 
 def get_latest_setup(user_id=None, leader_email=None):
-    try:
-        if leader_email:
-            return Setup.query.filter_by(leader_email=leader_email).order_by(Setup.created_at.desc()).first()
-        return Setup.query.filter_by(user_id=user_id).order_by(Setup.created_at.desc()).first()
-    except Exception as e:
-        logger.error(f"Error getting latest setup: {e}")
-        return None
+    max_retries = 3
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        try:
+            if leader_email:
+                return Setup.query.filter_by(leader_email=leader_email).order_by(Setup.created_at.desc()).first()
+            return Setup.query.filter_by(user_id=user_id).order_by(Setup.created_at.desc()).first()
+        except OperationalError:
+            if retry_count == max_retries - 1:
+                logger.error("Failed to get latest setup after multiple retries")
+                return None
+            retry_count += 1
+            sleep(1)
+    return None
 
 def check_setup_required():
     if current_user.is_authenticated:
@@ -59,8 +67,8 @@ def check_setup_required():
 
 @routes.route('/')
 def index():
-    if current_user.is_authenticated:
-        try:
+    try:
+        if current_user.is_authenticated:
             setup = get_latest_setup(current_user.id)
             if not setup:
                 return redirect(url_for('routes.setup'))
@@ -92,11 +100,12 @@ def index():
             
             return redirect(url_for('routes.assessment_results'))
             
-        except Exception as e:
-            logger.error(f"Error in index route: {str(e)}")
-            flash('An error occurred. Please try again.', 'error')
-            db.session.rollback()
-    return render_template('index.html')
+        return render_template('index.html')
+    except Exception as e:
+        logger.error(f"Error in index route: {str(e)}")
+        flash('An error occurred. Please try again.', 'error')
+        db.session.rollback()
+        return render_template('index.html')
 
 @routes.route('/setup', methods=['GET', 'POST'])
 @login_required
@@ -119,8 +128,20 @@ def setup():
                 leader_employer=request.form['leader_employer'].strip(),
                 created_at=datetime.utcnow()
             )
-            db.session.add(setup_info)
-            db.session.commit()
+            
+            max_retries = 3
+            retry_count = 0
+            while retry_count < max_retries:
+                try:
+                    db.session.add(setup_info)
+                    db.session.commit()
+                    break
+                except OperationalError:
+                    if retry_count == max_retries - 1:
+                        raise
+                    retry_count += 1
+                    sleep(1)
+                    db.session.rollback()
             
             flash('Setup completed successfully!', 'success')
             return redirect(url_for('routes.initiatives'))
@@ -147,10 +168,20 @@ def initiatives():
             flash('Setup information not found.', 'error')
             return redirect(url_for('routes.setup'))
         
-        initiatives = Initiative.query.order_by(Initiative.order).all()
-        if not initiatives:
-            flash('No initiatives available. Please contact an administrator.', 'error')
-            return redirect(url_for('routes.index'))
+        max_retries = 3
+        retry_count = 0
+        while retry_count < max_retries:
+            try:
+                initiatives = Initiative.query.order_by(Initiative.order).all()
+                if not initiatives:
+                    flash('No initiatives available. Please contact an administrator.', 'error')
+                    return redirect(url_for('routes.index'))
+                break
+            except OperationalError:
+                if retry_count == max_retries - 1:
+                    raise
+                retry_count += 1
+                sleep(1)
             
         response = Response.query.filter_by(
             setup_id=setup.id,
@@ -218,7 +249,25 @@ def initiatives():
 @login_required
 def questionnaire(initiative_index=0):
     try:
-        setup = get_latest_setup(current_user.id)
+        max_retries = 3
+        retry_count = 0
+        setup = None
+        
+        while retry_count < max_retries:
+            try:
+                setup = get_latest_setup(current_user.id)
+                if setup:
+                    break
+                retry_count += 1
+                sleep(1)
+            except OperationalError:
+                if retry_count == max_retries - 1:
+                    logger.error("Failed to connect to database after multiple retries")
+                    flash('Database connection error. Please try again.', 'error')
+                    return redirect(url_for('routes.index'))
+                retry_count += 1
+                sleep(1)
+
         if not setup:
             flash('Please complete the setup first.', 'info')
             return redirect(url_for('routes.setup'))
@@ -279,7 +328,6 @@ def questionnaire(initiative_index=0):
             return redirect(url_for('routes.initiatives'))
             
         # Add retry logic for database operations
-        max_retries = 3
         retry_count = 0
         saved_answers = {}
         
@@ -330,7 +378,26 @@ def questionnaire(initiative_index=0):
 @login_required
 def save_answer():
     try:
-        setup = get_latest_setup(current_user.id)
+        max_retries = 3
+        retry_count = 0
+        setup = None
+        
+        while retry_count < max_retries:
+            try:
+                setup = get_latest_setup(current_user.id)
+                if setup:
+                    break
+                retry_count += 1
+                sleep(1)
+            except OperationalError:
+                if retry_count == max_retries - 1:
+                    return jsonify({
+                        'status': 'error',
+                        'message': 'Database connection error'
+                    }), 500
+                retry_count += 1
+                sleep(1)
+
         if not setup:
             return jsonify({
                 'status': 'error',
@@ -356,26 +423,39 @@ def save_answer():
         # Handle both single integer and array answers
         answer_value = answer if isinstance(answer, list) else [answer]
 
-        response = Response.query.filter_by(
-            setup_id=setup.id,
-            question_id=question_id
-        ).first()
+        retry_count = 0
+        while retry_count < max_retries:
+            try:
+                response = Response.query.filter_by(
+                    setup_id=setup.id,
+                    question_id=question_id
+                ).first()
 
-        if response:
-            response.answer = json.dumps(answer_value)
-            response.is_valid = True
-            response.timestamp = datetime.utcnow()
-        else:
-            response = Response(
-                setup_id=setup.id,
-                question_id=question_id,
-                answer=json.dumps(answer_value),
-                is_valid=True,
-                timestamp=datetime.utcnow()
-            )
-            db.session.add(response)
+                if response:
+                    response.answer = json.dumps(answer_value)
+                    response.is_valid = True
+                    response.timestamp = datetime.utcnow()
+                else:
+                    response = Response(
+                        setup_id=setup.id,
+                        question_id=question_id,
+                        answer=json.dumps(answer_value),
+                        is_valid=True,
+                        timestamp=datetime.utcnow()
+                    )
+                    db.session.add(response)
 
-        db.session.commit()
+                db.session.commit()
+                break
+            except OperationalError:
+                if retry_count == max_retries - 1:
+                    return jsonify({
+                        'status': 'error',
+                        'message': 'Failed to save answer'
+                    }), 500
+                retry_count += 1
+                sleep(1)
+                db.session.rollback()
 
         # Calculate progress
         initiatives_response = Response.query.filter_by(
@@ -389,7 +469,6 @@ def save_answer():
                 'message': 'No initiatives found'
             }), 404
 
-        # Parse selected initiatives as strings
         selected_initiatives = json.loads(initiatives_response.answer)
         if not isinstance(selected_initiatives, list):
             return jsonify({
@@ -397,11 +476,9 @@ def save_answer():
                 'message': 'Invalid initiatives data'
             }), 400
 
-        # Ensure initiative values are strings
         selected_initiatives = [str(init) if not isinstance(init, str) else init 
                               for init in selected_initiatives]
 
-        # Calculate total questions using string comparison
         total_questions = sum(
             len(Question.query.filter_by(strategic_goal=str(init)).all())
             for init in selected_initiatives
@@ -432,7 +509,24 @@ def save_answer():
 @login_required
 def assessment_results():
     try:
-        setup = get_latest_setup(current_user.id)
+        max_retries = 3
+        retry_count = 0
+        setup = None
+        
+        while retry_count < max_retries:
+            try:
+                setup = get_latest_setup(current_user.id)
+                if setup:
+                    break
+                retry_count += 1
+                sleep(1)
+            except OperationalError:
+                if retry_count == max_retries - 1:
+                    flash('Database connection error. Please try again.', 'error')
+                    return redirect(url_for('routes.index'))
+                retry_count += 1
+                sleep(1)
+
         if not setup:
             flash('Setup information not found.', 'error')
             return redirect(url_for('routes.setup'))
@@ -450,7 +544,6 @@ def assessment_results():
         results = {}
 
         for initiative in selected_initiatives:
-            # Ensure initiative is a string
             initiative = str(initiative)
             questions = Question.query.filter_by(strategic_goal=initiative).all()
             initiative_results = {
@@ -493,49 +586,6 @@ def assessment_results():
         logger.error(f"Error generating assessment results: {str(e)}")
         flash('An error occurred while generating results.', 'error')
         return redirect(url_for('routes.initiatives'))
-
-@routes.route('/generate-roadmap')
-@login_required
-def generate_roadmap():
-    try:
-        setup = get_latest_setup(current_user.id)
-        if not setup:
-            flash('Please complete setup first.', 'info')
-            return redirect(url_for('routes.setup'))
-
-        initiatives_response = Response.query.filter_by(
-            setup_id=setup.id,
-            question_id=1
-        ).first()
-
-        if not initiatives_response:
-            flash('Please complete the assessment first.', 'info')
-            return redirect(url_for('routes.initiatives'))
-
-        # Check if all questions are answered
-        selected_initiatives = json.loads(initiatives_response.answer)
-        total_questions = sum(
-            len(Question.query.filter_by(strategic_goal=str(init)).all())
-            for init in selected_initiatives
-        )
-
-        answered = len(Response.query.filter(
-            Response.setup_id == setup.id,
-            Response.is_valid == True,
-            Response.question_id != 1
-        ).all())
-
-        if answered < total_questions:
-            flash('Please complete all questions before generating the roadmap.', 'info')
-            current_initiative_index = session.get('current_initiative_index', 0)
-            return redirect(url_for('routes.questionnaire', initiative_index=current_initiative_index))
-
-        return render_template('roadmap_generation.html')
-
-    except Exception as e:
-        logger.error(f"Error accessing roadmap generation: {str(e)}")
-        flash('An error occurred. Please try again.', 'error')
-        return redirect(url_for('routes.assessment_results'))
 
 @routes.route('/admin/questions')
 @login_required

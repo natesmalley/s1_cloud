@@ -4,6 +4,13 @@
 <div class="container py-4">
     <div class="row justify-content-center">
         <div class="col-lg-8">
+            {% if error %}
+            <div class="alert alert-danger">
+                {{ error }}
+                <button onclick="window.location.reload()" class="btn btn-link">Retry</button>
+            </div>
+            {% endif %}
+
             {% if current_initiative %}
             <!-- Initiative section -->
             <div class="initiative-section mb-5">
@@ -53,8 +60,8 @@
                         Next Initiative<i class="feather-chevron-right ms-2"></i>
                     </button>
                 {% else %}
-                    <button type="button" class="btn btn-success" onclick="window.location.href='{{ url_for('routes.generate_roadmap') }}'">
-                        Generate Roadmap<i class="feather-check-circle ms-2"></i>
+                    <button type="button" class="btn btn-success" onclick="window.location.href='{{ url_for('routes.assessment_results') }}'">
+                        View Results<i class="feather-check-circle ms-2"></i>
                     </button>
                 {% endif %}
             </div>
@@ -98,7 +105,12 @@ function saveAnswer(questionId, value) {
             answer: parseInt(value)
         })
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
     .then(data => {
         const validationElement = document.getElementById(`validation_${questionId}`);
         if (data.status === 'success') {
@@ -111,11 +123,19 @@ function saveAnswer(questionId, value) {
                 `${Math.round(data.progress)}% Complete`;
         } else {
             validationElement.textContent = data.message;
+            validationElement.innerHTML += ' <button onclick="saveAnswer(' + questionId + ', ' + value + ')" class="btn btn-link p-0">Retry</button>';
         }
     })
     .catch(error => {
         console.error('Error saving answer:', error);
+        const validationElement = document.getElementById(`validation_${questionId}`);
+        validationElement.innerHTML = 'Failed to save answer. <button onclick="saveAnswer(' + questionId + ', ' + value + ')" class="btn btn-link p-0">Retry</button>';
     });
 }
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    feather.replace();
+});
 </script>
 {% endblock %}
