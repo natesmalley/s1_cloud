@@ -38,15 +38,15 @@ def get_db_session():
         return db.session
 
 def get_redirect_url():
-    # Development URL - matches the URL registered in Google OAuth console
-    dev_url = "https://8767fe56-c668-4fa2-9723-292ada26865d-00-2p1xk2p8ugpyl.kirk.replit.dev/google_login/callback"
     # Production URL
     prod_url = "https://cloud-security-assessment.replit.app/google_login/callback"
     
+    # Development URL - for local testing
+    dev_url = "https://8767fe56-c668-4fa2-9723-292ada26865d-00-2p1xk2p8ugpyl.kirk.replit.dev/google_login/callback"
+    
     # Check if we're in production environment
-    if os.environ.get('REPLIT_DEPLOYMENT'):
-        return prod_url
-    return dev_url
+    is_production = os.environ.get('REPL_SLUG') == 'cloud-security-assessment'
+    return prod_url if is_production else dev_url
 
 def sanitize_callback_url(url):
     parsed = urlparse(url)
@@ -75,12 +75,13 @@ def login():
             return redirect(url_for("routes.index"))
             
         authorization_endpoint = google_provider_cfg["authorization_endpoint"]
-        logger.info(f"Authorization endpoint: {authorization_endpoint}")
+        redirect_uri = get_redirect_url()
+        logger.info(f"Using redirect URI: {redirect_uri}")
 
         # Use library to construct the request for Google login
         request_uri = client.prepare_request_uri(
             authorization_endpoint,
-            redirect_uri=get_redirect_url(),
+            redirect_uri=redirect_uri,
             scope=REQUIRED_SCOPES
         )
         logger.info(f"Full authorization request URI: {request_uri}")
@@ -107,6 +108,8 @@ def callback():
             return redirect(url_for("routes.index"))
 
         token_endpoint = google_provider_cfg["token_endpoint"]
+        redirect_uri = get_redirect_url()
+        logger.info(f"Callback using redirect URI: {redirect_uri}")
 
         # Get the full callback URL
         callback_url = request.url
@@ -117,7 +120,7 @@ def callback():
         token_url, headers, body = client.prepare_token_request(
             token_endpoint,
             authorization_response=callback_url,
-            redirect_url=get_redirect_url(),
+            redirect_url=redirect_uri,
             code=code
         )
 
