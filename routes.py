@@ -465,16 +465,16 @@ def assessment_results():
         if not setup:
             flash('Please complete setup first.', 'info')
             return redirect(url_for('routes.setup'))
-
+            
         initiatives_response = Response.query.filter_by(
             setup_id=setup.id,
             question_id=1
         ).first()
-
+        
         if not initiatives_response:
             flash('No initiatives found. Please select your initiatives.', 'error')
             return redirect(url_for('routes.initiatives'))
-
+            
         try:
             selected_initiatives = json.loads(initiatives_response.answer)
             if not isinstance(selected_initiatives, list) or not selected_initiatives:
@@ -483,24 +483,24 @@ def assessment_results():
         except (json.JSONDecodeError, TypeError):
             flash('Invalid initiatives data. Please select your initiatives again.', 'error')
             return redirect(url_for('routes.initiatives'))
-
+            
         results = {}
         total_questions = 0
         total_answers = 0
-
+        
         # Process each initiative
         for initiative in selected_initiatives:
             # Get questions for this initiative
             questions = Question.query.filter_by(
                 strategic_goal=str(initiative)
             ).order_by(Question.order).all()
-
+            
             if not questions:
                 logger.warning(f"No questions found for initiative: {initiative}")
                 continue
-
+                
             total_questions += len(questions)
-
+            
             # Get responses for these questions
             question_ids = [q.id for q in questions]
             responses = Response.query.filter(
@@ -508,17 +508,17 @@ def assessment_results():
                 Response.question_id.in_(question_ids),
                 Response.is_valid == True
             ).all()
-
+            
             total_answers += len(responses)
-
+            
             # Map responses to questions
             response_map = {r.question_id: r for r in responses}
-
+            
             # Calculate results for this initiative
             initiative_results = []
             total_maturity = 0
             question_count = 0
-
+            
             for question in questions:
                 response = response_map.get(question.id)
                 if response:
@@ -526,13 +526,13 @@ def assessment_results():
                         # Parse the answer value from JSON
                         answer_data = json.loads(response.answer)
                         answer_value = answer_data[0] if isinstance(answer_data, list) else answer_data
-
+                        
                         # Calculate maturity score (1-5 scale)
                         maturity_score = answer_value + 1
-
+                        
                         total_maturity += maturity_score
                         question_count += 1
-
+                        
                         initiative_results.append({
                             'area': question.major_cnapp_area,
                             'question': question.text,
@@ -542,24 +542,24 @@ def assessment_results():
                     except (json.JSONDecodeError, IndexError, TypeError) as e:
                         logger.error(f"Error processing answer for question {question.id}: {e}")
                         continue
-
+            
             # Calculate average maturity for this initiative
             average_maturity = round(total_maturity / question_count, 1) if question_count > 0 else 0
-
+            
             results[initiative] = {
                 'questions': initiative_results,
                 'average_maturity': average_maturity
             }
-
+        
         # Check if all questions are answered
         if total_answers < total_questions:
             flash('Please complete all questions before viewing results.', 'info')
             return redirect(url_for('routes.questionnaire', initiative_index=0))
-
+            
         return render_template('assessment_results.html',
                            setup=setup,
                            results=results)
-
+                           
     except Exception as e:
         logger.error(f"Error in assessment_results: {str(e)}")
         flash('An error occurred loading results. Please try again.', 'error')
@@ -673,3 +673,106 @@ def admin_delete_initiative(initiative_id):
         flash('Error deleting initiative', 'error')
         
     return redirect(url_for('routes.admin_initiatives'))
+
+# Admin routes for questions
+@routes.route('/admin/questions')
+@login_required
+def admin_questions():
+    if not current_user.email.endswith('@sentinelone.com') and current_user.email not in [
+        'mpsmalls11@gmail.com', 'jaldevi72@gmail.com', 
+        'm_mcgrail@outlook.com', 'gcastill0portfolio@gmail.com'
+    ]:
+        flash('Unauthorized access', 'error')
+        return redirect(url_for('routes.index'))
+        
+    questions = Question.query.order_by(Question.order).all()
+    return render_template('admin/questions.html', questions=questions)
+
+@routes.route('/admin/questions/add', methods=['GET', 'POST'])
+@login_required
+def admin_add_question():
+    if not current_user.email.endswith('@sentinelone.com') and current_user.email not in [
+        'mpsmalls11@gmail.com', 'jaldevi72@gmail.com', 
+        'm_mcgrail@outlook.com', 'gcastill0portfolio@gmail.com'
+    ]:
+        flash('Unauthorized access', 'error')
+        return redirect(url_for('routes.index'))
+        
+    if request.method == 'POST':
+        options = [opt.strip() for opt in request.form['options'].split(',')]
+        
+        question = Question(
+            strategic_goal=request.form['strategic_goal'],
+            major_cnapp_area=request.form['major_cnapp_area'],
+            text=request.form['text'],
+            options=options,
+            weighting_score=request.form['weighting_score'],
+            order=int(request.form['order'])
+        )
+        
+        try:
+            db.session.add(question)
+            db.session.commit()
+            flash('Question added successfully', 'success')
+            return redirect(url_for('routes.admin_questions'))
+        except Exception as e:
+            db.session.rollback()
+            flash('Error adding question', 'error')
+            return render_template('admin/question_form.html')
+            
+    return render_template('admin/question_form.html')
+
+@routes.route('/admin/questions/<int:question_id>/edit', methods=['GET', 'POST'])
+@login_required
+def admin_edit_question(question_id):
+    if not current_user.email.endswith('@sentinelone.com') and current_user.email not in [
+        'mpsmalls11@gmail.com', 'jaldevi72@gmail.com', 
+        'm_mcgrail@outlook.com', 'gcastill0portfolio@gmail.com'
+    ]:
+        flash('Unauthorized access', 'error')
+        return redirect(url_for('routes.index'))
+        
+    question = Question.query.get_or_404(question_id)
+    
+    if request.method == 'POST':
+        options = [opt.strip() for opt in request.form['options'].split(',')]
+        
+        try:
+            question.strategic_goal = request.form['strategic_goal']
+            question.major_cnapp_area = request.form['major_cnapp_area']
+            question.text = request.form['text']
+            question.options = options
+            question.weighting_score = request.form['weighting_score']
+            question.order = int(request.form['order'])
+            
+            db.session.commit()
+            flash('Question updated successfully', 'success')
+            return redirect(url_for('routes.admin_questions'))
+        except Exception as e:
+            db.session.rollback()
+            flash('Error updating question', 'error')
+            return render_template('admin/question_form.html', question=question)
+            
+    return render_template('admin/question_form.html', question=question)
+
+@routes.route('/admin/questions/<int:question_id>/delete', methods=['POST'])
+@login_required
+def admin_delete_question(question_id):
+    if not current_user.email.endswith('@sentinelone.com') and current_user.email not in [
+        'mpsmalls11@gmail.com', 'jaldevi72@gmail.com', 
+        'm_mcgrail@outlook.com', 'gcastill0portfolio@gmail.com'
+    ]:
+        flash('Unauthorized access', 'error')
+        return redirect(url_for('routes.index'))
+        
+    question = Question.query.get_or_404(question_id)
+    
+    try:
+        db.session.delete(question)
+        db.session.commit()
+        flash('Question deleted successfully', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash('Error deleting question', 'error')
+        
+    return redirect(url_for('routes.admin_questions'))
