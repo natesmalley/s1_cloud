@@ -38,7 +38,15 @@ def get_db_session():
         return db.session
 
 def get_redirect_url():
-    return "https://8767fe56-c668-4fa2-9723-292ada26865d-00-2p1xk2p8ugpyl.kirk.replit.dev/google_login/callback"
+    # Development URL - matches the URL registered in Google OAuth console
+    dev_url = "https://8767fe56-c668-4fa2-9723-292ada26865d-00-2p1xk2p8ugpyl.kirk.replit.dev/google_login/callback"
+    # Production URL
+    prod_url = "https://cloud-security-assessment.replit.app/google_login/callback"
+    
+    # Check if we're in production environment
+    if os.environ.get('REPLIT_DEPLOYMENT'):
+        return prod_url
+    return dev_url
 
 def sanitize_callback_url(url):
     parsed = urlparse(url)
