@@ -11,61 +11,78 @@
             </div>
             {% endif %}
 
-            {% if current_initiative %}
-            <!-- Initiative section -->
-            <div class="initiative-section mb-5">
-                <h3 class="mb-4">{{ current_initiative }}</h3>
-                
-                {% for question in questions[current_initiative] %}
-                <div class="question-card mb-4">
-                    <div class="card bg-dark">
-                        <div class="card-body">
-                            <h5 class="card-title mb-3">{{ question.text }}</h5>
-                            <p class="text-muted small mb-3">Area: {{ question.major_cnapp_area }}</p>
-                            
-                            <div class="options-list">
-                                {% for option in question.options %}
-                                <div class="form-check mb-2">
-                                    <input class="form-check-input" type="radio" 
-                                           name="q_{{ question.id }}" 
-                                           id="q{{ question.id }}_opt{{ loop.index }}"
-                                           value="{{ loop.index0 }}"
-                                           {% if saved_answers.get(question.id) == loop.index0 %}checked{% endif %}
-                                           onchange="saveAnswer({{ question.id }}, this.value)">
-                                    <label class="form-check-label" for="q{{ question.id }}_opt{{ loop.index }}">
-                                        {{ option }}
-                                    </label>
-                                </div>
-                                {% endfor %}
-                            </div>
-                            
-                            <div class="validation-message text-danger mt-2" id="validation_{{ question.id }}"></div>
-                        </div>
-                    </div>
+            <div id="loading-indicator" class="text-center py-5" style="display: none;">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Loading...</span>
                 </div>
-                {% endfor %}
+                <p class="text-muted">Loading questions...</p>
             </div>
 
-            <!-- Fixed bottom navigation -->
-            <div class="navigation-buttons mt-5 mb-4 d-flex justify-content-between">
-                <button type="button" class="btn btn-secondary" onclick="window.location.href='{{ prev_url }}'">
-                    {% if prev_url == url_for('routes.initiatives') %}
-                        <i class="feather-chevron-left me-2"></i>Back to Initiatives
+            <div id="questionnaire-content" {% if error %}style="display: none;"{% endif %}>
+                {% if current_initiative %}
+                <!-- Initiative section -->
+                <div class="initiative-section mb-5">
+                    <h3 class="mb-4">{{ current_initiative }}</h3>
+                    
+                    {% for question in questions[current_initiative] %}
+                    <div class="question-card mb-4">
+                        <div class="card bg-dark">
+                            <div class="card-body">
+                                <h5 class="card-title mb-3">{{ question.text }}</h5>
+                                <p class="text-muted small mb-3">Area: {{ question.major_cnapp_area }}</p>
+                                
+                                <div class="options-list">
+                                    {% for option in question.options %}
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="radio" 
+                                               name="q_{{ question.id }}" 
+                                               id="q{{ question.id }}_opt{{ loop.index }}"
+                                               value="{{ loop.index0 }}"
+                                               {% if saved_answers.get(question.id) == loop.index0 %}checked{% endif %}
+                                               onchange="saveAnswer({{ question.id }}, this.value)">
+                                        <label class="form-check-label" for="q{{ question.id }}_opt{{ loop.index }}">
+                                            {{ option }}
+                                        </label>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                
+                                <div class="answer-status mt-2">
+                                    <div class="validation-message text-danger" id="validation_{{ question.id }}"></div>
+                                    <div class="saving-indicator" id="saving_{{ question.id }}" style="display: none;">
+                                        <small class="text-muted">
+                                            <span class="spinner-border spinner-border-sm me-1"></span>
+                                            Saving...
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <!-- Fixed bottom navigation -->
+                <div class="navigation-buttons mt-5 mb-4 d-flex justify-content-between">
+                    <button type="button" class="btn btn-secondary navigation-btn" onclick="confirmNavigation('{{ prev_url }}')">
+                        {% if prev_url == url_for('routes.initiatives') %}
+                            <i class="feather-chevron-left me-2"></i>Back to Initiatives
+                        {% else %}
+                            <i class="feather-chevron-left me-2"></i>Previous Initiative
+                        {% endif %}
+                    </button>
+                    {% if next_url %}
+                        <button type="button" class="btn btn-primary navigation-btn" onclick="confirmNavigation('{{ next_url }}')">
+                            Next Initiative<i class="feather-chevron-right ms-2"></i>
+                        </button>
                     {% else %}
-                        <i class="feather-chevron-left me-2"></i>Previous Initiative
+                        <button type="button" class="btn btn-success navigation-btn" onclick="confirmNavigation('{{ url_for('routes.assessment_results') }}')">
+                            View Results<i class="feather-check-circle ms-2"></i>
+                        </button>
                     {% endif %}
-                </button>
-                {% if next_url %}
-                    <button type="button" class="btn btn-primary" onclick="window.location.href='{{ next_url }}'">
-                        Next Initiative<i class="feather-chevron-right ms-2"></i>
-                    </button>
-                {% else %}
-                    <button type="button" class="btn btn-success" onclick="window.location.href='{{ url_for('routes.assessment_results') }}'">
-                        View Results<i class="feather-check-circle ms-2"></i>
-                    </button>
+                </div>
                 {% endif %}
             </div>
-            {% endif %}
         </div>
     </div>
 </div>
@@ -94,7 +111,30 @@
 
 {% block scripts %}
 <script>
+let savingInProgress = false;
+
+function showLoadingState(questionId) {
+    const savingIndicator = document.getElementById(`saving_${questionId}`);
+    if (savingIndicator) {
+        savingIndicator.style.display = 'block';
+    }
+}
+
+function hideLoadingState(questionId) {
+    const savingIndicator = document.getElementById(`saving_${questionId}`);
+    if (savingIndicator) {
+        savingIndicator.style.display = 'none';
+    }
+}
+
 function saveAnswer(questionId, value) {
+    if (savingInProgress) return;
+    savingInProgress = true;
+    
+    showLoadingState(questionId);
+    const validationElement = document.getElementById(`validation_${questionId}`);
+    validationElement.textContent = '';
+    
     fetch('/api/save-answer', {
         method: 'POST',
         headers: {
@@ -112,7 +152,6 @@ function saveAnswer(questionId, value) {
         return response.json();
     })
     .then(data => {
-        const validationElement = document.getElementById(`validation_${questionId}`);
         if (data.status === 'success') {
             validationElement.textContent = '';
             // Update progress bar
@@ -122,20 +161,63 @@ function saveAnswer(questionId, value) {
             document.querySelector('.progress-container .text-muted').textContent = 
                 `${Math.round(data.progress)}% Complete`;
         } else {
-            validationElement.textContent = data.message;
-            validationElement.innerHTML += ' <button onclick="saveAnswer(' + questionId + ', ' + value + ')" class="btn btn-link p-0">Retry</button>';
+            validationElement.innerHTML = `${data.message} <button onclick="saveAnswer(${questionId}, ${value})" class="btn btn-link p-0">Retry</button>`;
         }
     })
     .catch(error => {
         console.error('Error saving answer:', error);
-        const validationElement = document.getElementById(`validation_${questionId}`);
-        validationElement.innerHTML = 'Failed to save answer. <button onclick="saveAnswer(' + questionId + ', ' + value + ')" class="btn btn-link p-0">Retry</button>';
+        validationElement.innerHTML = `Failed to save answer. <button onclick="saveAnswer(${questionId}, ${value})" class="btn btn-link p-0">Retry</button>`;
+    })
+    .finally(() => {
+        hideLoadingState(questionId);
+        savingInProgress = false;
     });
+}
+
+function confirmNavigation(url) {
+    if (savingInProgress) {
+        alert('Please wait while your answers are being saved.');
+        return false;
+    }
+    
+    const unansweredQuestions = document.querySelectorAll('.options-list').length - 
+                               document.querySelectorAll('.options-list input:checked').length;
+    
+    if (unansweredQuestions > 0) {
+        if (confirm(`You have ${unansweredQuestions} unanswered question(s). Are you sure you want to continue?`)) {
+            window.location.href = url;
+        }
+    } else {
+        window.location.href = url;
+    }
 }
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     feather.replace();
+    
+    // Disable navigation buttons while saving
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            if (mutation.target.style.display === 'block') {
+                document.querySelectorAll('.navigation-btn').forEach(btn => btn.disabled = true);
+            } else {
+                document.querySelectorAll('.navigation-btn').forEach(btn => btn.disabled = false);
+            }
+        });
+    });
+    
+    document.querySelectorAll('.saving-indicator').forEach(indicator => {
+        observer.observe(indicator, { attributes: true, attributeFilter: ['style'] });
+    });
+});
+
+// Handle beforeunload event
+window.addEventListener('beforeunload', function(e) {
+    if (savingInProgress) {
+        e.preventDefault();
+        e.returnValue = '';
+    }
 });
 </script>
 {% endblock %}

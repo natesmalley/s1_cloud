@@ -71,36 +71,73 @@ def index():
         if current_user.is_authenticated:
             setup = get_latest_setup(current_user.id)
             if not setup:
+                flash('Please complete your setup information first.', 'info')
                 return redirect(url_for('routes.setup'))
-                
+
+            # Check for initiatives selection
             initiatives_response = Response.query.filter_by(
                 setup_id=setup.id,
                 question_id=1
             ).order_by(Response.timestamp.desc()).first()
             
             if not initiatives_response:
+                flash('Please select your strategic initiatives.', 'info')
                 return redirect(url_for('routes.initiatives'))
             
-            # Check if all questions are answered for selected initiatives
-            selected_initiatives = json.loads(initiatives_response.answer)
-            total_questions = sum(
-                len(Question.query.filter_by(strategic_goal=str(init)).all())
-                for init in selected_initiatives
-            )
-            
-            answered = len(Response.query.filter(
-                Response.setup_id == setup.id,
-                Response.is_valid == True,
-                Response.question_id != 1
-            ).all())
-            
-            if answered < total_questions:
-                initiative_index = session.get('current_initiative_index', 0)
-                return redirect(url_for('routes.questionnaire', initiative_index=initiative_index))
-            
-            return redirect(url_for('routes.assessment_results'))
-            
+            try:
+                selected_initiatives = json.loads(initiatives_response.answer)
+                if not isinstance(selected_initiatives, list) or not selected_initiatives:
+                    flash('Please select valid initiatives.', 'info')
+                    return redirect(url_for('routes.initiatives'))
+                
+                # Calculate total questions and answered questions
+                total_questions = sum(
+                    len(Question.query.filter_by(strategic_goal=str(init)).all())
+                    for init in selected_initiatives
+                )
+                
+                answered = len(Response.query.filter(
+                    Response.setup_id == setup.id,
+                    Response.is_valid == True,
+                    Response.question_id != 1
+                ).all())
+                
+                # If questionnaire is incomplete
+                if answered < total_questions:
+                    # Get the current initiative index
+                    initiative_index = session.get('current_initiative_index', 0)
+                    if initiative_index >= len(selected_initiatives):
+                        initiative_index = 0
+                    
+                    # Find first incomplete initiative
+                    for idx, initiative in enumerate(selected_initiatives[initiative_index:]):
+                        questions = Question.query.filter_by(
+                            strategic_goal=str(initiative)
+                        ).all()
+                        responses = Response.query.filter(
+                            Response.setup_id == setup.id,
+                            Response.question_id.in_([q.id for q in questions]),
+                            Response.is_valid == True
+                        ).all()
+                        
+                        if len(responses) < len(questions):
+                            initiative_index = idx
+                            break
+                    
+                    flash('Please complete the questionnaire for all selected initiatives.', 'info')
+                    return redirect(url_for('routes.questionnaire', 
+                                        initiative_index=initiative_index))
+                
+                # If everything is complete, show results
+                return redirect(url_for('routes.assessment_results'))
+                
+            except (json.JSONDecodeError, TypeError):
+                flash('Invalid initiative data. Please try again.', 'error')
+                return redirect(url_for('routes.initiatives'))
+        
+        # If not authenticated, show landing page
         return render_template('index.html')
+        
     except Exception as e:
         logger.error(f"Error in index route: {str(e)}")
         flash('An error occurred. Please try again.', 'error')
@@ -249,25 +286,7 @@ def initiatives():
 @login_required
 def questionnaire(initiative_index=0):
     try:
-        max_retries = 3
-        retry_count = 0
-        setup = None
-        
-        while retry_count < max_retries:
-            try:
-                setup = get_latest_setup(current_user.id)
-                if setup:
-                    break
-                retry_count += 1
-                sleep(1)
-            except OperationalError:
-                if retry_count == max_retries - 1:
-                    logger.error("Failed to connect to database after multiple retries")
-                    flash('Database connection error. Please try again.', 'error')
-                    return redirect(url_for('routes.index'))
-                retry_count += 1
-                sleep(1)
-
+        setup = get_latest_setup(current_user.id)
         if not setup:
             flash('Please complete the setup first.', 'info')
             return redirect(url_for('routes.setup'))
@@ -367,7 +386,7 @@ def questionnaire(initiative_index=0):
                            saved_answers=saved_answers,
                            progress=progress,
                            prev_url=url_for('routes.initiatives') if initiative_index == 0 else url_for('routes.questionnaire', initiative_index=initiative_index-1),
-                           next_url=url_for('routes.questionnaire', initiative_index=initiative_index+1) if initiative_index < len(selected_initiatives)-1 else url_for('routes.assessment_results'))
+                           next_url=url_for('routes.assessment_results') if initiative_index >= len(selected_initiatives)-1 else url_for('routes.questionnaire', initiative_index=initiative_index+1))
                            
     except Exception as e:
         logger.error(f"Error loading questionnaire: {str(e)}")
@@ -378,26 +397,7 @@ def questionnaire(initiative_index=0):
 @login_required
 def save_answer():
     try:
-        max_retries = 3
-        retry_count = 0
-        setup = None
-        
-        while retry_count < max_retries:
-            try:
-                setup = get_latest_setup(current_user.id)
-                if setup:
-                    break
-                retry_count += 1
-                sleep(1)
-            except OperationalError:
-                if retry_count == max_retries - 1:
-                    return jsonify({
-                        'status': 'error',
-                        'message': 'Database connection error'
-                    }), 500
-                retry_count += 1
-                sleep(1)
-
+        setup = get_latest_setup(current_user.id)
         if not setup:
             return jsonify({
                 'status': 'error',
@@ -420,9 +420,34 @@ def save_answer():
                 'message': 'Missing question_id or answer'
             }), 400
 
-        # Handle both single integer and array answers
-        answer_value = answer if isinstance(answer, list) else [answer]
+        # Validate answer type and convert if necessary
+        try:
+            if isinstance(answer, str):
+                answer = int(answer)
+            elif isinstance(answer, list):
+                answer = [int(a) if isinstance(a, str) else a for a in answer]
+        except (ValueError, TypeError):
+            return jsonify({
+                'status': 'error',
+                'message': 'Invalid answer format'
+            }), 400
 
+        # Validate question exists
+        question = Question.query.get(question_id)
+        if not question:
+            return jsonify({
+                'status': 'error',
+                'message': 'Question not found'
+            }), 404
+
+        # Validate answer is within range
+        if isinstance(answer, int) and (answer < 0 or answer >= len(question.options)):
+            return jsonify({
+                'status': 'error',
+                'message': 'Answer out of range'
+            }), 400
+
+        max_retries = 3
         retry_count = 0
         while retry_count < max_retries:
             try:
@@ -432,14 +457,14 @@ def save_answer():
                 ).first()
 
                 if response:
-                    response.answer = json.dumps(answer_value)
+                    response.answer = json.dumps([answer] if isinstance(answer, int) else answer)
                     response.is_valid = True
                     response.timestamp = datetime.utcnow()
                 else:
                     response = Response(
                         setup_id=setup.id,
                         question_id=question_id,
-                        answer=json.dumps(answer_value),
+                        answer=json.dumps([answer] if isinstance(answer, int) else answer),
                         is_valid=True,
                         timestamp=datetime.utcnow()
                     )
@@ -469,15 +494,12 @@ def save_answer():
                 'message': 'No initiatives found'
             }), 404
 
-        selected_initiatives = json.loads(initiatives_response.answer)
-        if not isinstance(selected_initiatives, list):
-            return jsonify({
-                'status': 'error',
-                'message': 'Invalid initiatives data'
-            }), 400
-
-        selected_initiatives = [str(init) if not isinstance(init, str) else init 
-                              for init in selected_initiatives]
+        try:
+            selected_initiatives = json.loads(initiatives_response.answer)
+            if not isinstance(selected_initiatives, list):
+                selected_initiatives = []
+        except (json.JSONDecodeError, TypeError):
+            selected_initiatives = []
 
         total_questions = sum(
             len(Question.query.filter_by(strategic_goal=str(init)).all())
@@ -495,60 +517,70 @@ def save_answer():
         return jsonify({
             'status': 'success',
             'is_valid': True,
-            'progress': progress
+            'progress': progress,
+            'answered': answered,
+            'total': total_questions
         })
 
     except Exception as e:
         logger.error(f"Error in save_answer: {str(e)}")
         return jsonify({
             'status': 'error',
-            'message': 'An unexpected error occurred'
+            'message': str(e)
         }), 500
 
 @routes.route('/assessment_results')
 @login_required
 def assessment_results():
     try:
-        max_retries = 3
-        retry_count = 0
-        setup = None
-        
-        while retry_count < max_retries:
-            try:
-                setup = get_latest_setup(current_user.id)
-                if setup:
-                    break
-                retry_count += 1
-                sleep(1)
-            except OperationalError:
-                if retry_count == max_retries - 1:
-                    flash('Database connection error. Please try again.', 'error')
-                    return redirect(url_for('routes.index'))
-                retry_count += 1
-                sleep(1)
-
+        setup = get_latest_setup(current_user.id)
         if not setup:
             flash('Setup information not found.', 'error')
             return redirect(url_for('routes.setup'))
 
+        # Get selected initiatives
         initiatives_response = Response.query.filter_by(
             setup_id=setup.id,
             question_id=1
         ).first()
 
         if not initiatives_response:
-            flash('No initiatives found.', 'error')
+            flash('No initiatives found. Please complete the questionnaire first.', 'error')
             return redirect(url_for('routes.initiatives'))
 
-        selected_initiatives = json.loads(initiatives_response.answer)
-        results = {}
+        try:
+            selected_initiatives = json.loads(initiatives_response.answer)
+            if not isinstance(selected_initiatives, list):
+                selected_initiatives = []
+        except (json.JSONDecodeError, TypeError):
+            flash('Invalid initiatives data. Please start over.', 'error')
+            return redirect(url_for('routes.initiatives'))
 
+        # Verify all questions are answered
+        total_questions = 0
+        answered_questions = 0
         for initiative in selected_initiatives:
-            initiative = str(initiative)
-            questions = Question.query.filter_by(strategic_goal=initiative).all()
+            questions = Question.query.filter_by(strategic_goal=str(initiative)).all()
+            total_questions += len(questions)
+            
+            responses = Response.query.filter(
+                Response.setup_id == setup.id,
+                Response.question_id.in_([q.id for q in questions]),
+                Response.is_valid == True
+            ).all()
+            answered_questions += len(responses)
+
+        if answered_questions < total_questions:
+            flash('Please complete all questions before viewing results.', 'info')
+            return redirect(url_for('routes.questionnaire', initiative_index=0))
+
+        results = {}
+        for initiative in selected_initiatives:
+            questions = Question.query.filter_by(strategic_goal=str(initiative)).all()
             initiative_results = {
                 'questions': [],
-                'average_maturity': 0
+                'average_maturity': 0,
+                'completion': 0
             }
             
             total_maturity = 0
@@ -562,21 +594,25 @@ def assessment_results():
                 ).first()
 
                 if response:
-                    answer_data = json.loads(response.answer)
-                    answer_index = answer_data[0] if isinstance(answer_data, list) else answer_data
-                    maturity_score = answer_index + 1  # Convert 0-based index to 1-5 score
-                    total_maturity += maturity_score
-                    answered_count += 1
+                    try:
+                        answer_data = json.loads(response.answer)
+                        answer_index = answer_data[0] if isinstance(answer_data, list) else answer_data
+                        maturity_score = answer_index + 1  # Convert 0-based index to 1-5 score
+                        total_maturity += maturity_score
+                        answered_count += 1
 
-                    initiative_results['questions'].append({
-                        'area': question.major_cnapp_area,
-                        'question': question.text,
-                        'answer': question.options[answer_index],
-                        'maturity_score': maturity_score
-                    })
+                        initiative_results['questions'].append({
+                            'area': question.major_cnapp_area,
+                            'question': question.text,
+                            'answer': question.options[answer_index],
+                            'maturity_score': maturity_score
+                        })
+                    except (json.JSONDecodeError, IndexError, TypeError):
+                        continue
 
             if answered_count > 0:
                 initiative_results['average_maturity'] = round(total_maturity / answered_count, 1)
+                initiative_results['completion'] = (answered_count / len(questions)) * 100
 
             results[initiative] = initiative_results
 
@@ -584,9 +620,10 @@ def assessment_results():
 
     except Exception as e:
         logger.error(f"Error generating assessment results: {str(e)}")
-        flash('An error occurred while generating results.', 'error')
+        flash('An error occurred while generating results. Please try again.', 'error')
         return redirect(url_for('routes.initiatives'))
 
+# Admin routes
 @routes.route('/admin/questions')
 @login_required
 @admin_required
